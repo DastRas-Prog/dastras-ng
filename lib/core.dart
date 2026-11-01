@@ -1,5 +1,12 @@
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter/services.dart';
+
+class AppInfo {
+  final String pkg, name;
+  final Uint8List icon;
+  AppInfo(this.pkg, this.name, this.icon);
+}
 
 /// Bridge to the native side (libXray + VpnService).
 class Core {
@@ -17,11 +24,29 @@ class Core {
     }
   }
 
-  static Future<String> start(String config) async =>
-      (await _ch.invokeMethod<String>('start', config)) ?? 'error';
+  /// mode: all | include | exclude
+  static Future<String> start(String config, String mode, List<String> apps) async =>
+      (await _ch.invokeMethod<String>('start', {
+        'config': config,
+        'mode': mode,
+        'apps': apps,
+      })) ??
+      'error';
 
   static Future<void> stop() => _ch.invokeMethod('stop');
 
   static Future<String> status() async =>
       (await _ch.invokeMethod<String>('status')) ?? 'stopped';
+
+  static Future<List<AppInfo>> apps() async {
+    final s = await _ch.invokeMethod<String>('apps');
+    final list = jsonDecode(s ?? '[]') as List;
+    final out = <AppInfo>[];
+    for (final e in list) {
+      final m = Map<String, dynamic>.from(e as Map);
+      out.add(AppInfo(m['pkg'] as String, m['name'] as String, base64Decode(m['icon'] as String)));
+    }
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
 }

@@ -1,16 +1,22 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'config.dart';
-import 'core.dart';
-import 'models.dart';
-import 'service.dart';
+import 'home.dart';
+import 'lang.dart';
+import 'theme.dart';
 
 const kAppName = 'DastRas NG';
 const kChannelUrl = 'https://t.me/dastras';
-const kSupportUrl = 'https://t.me/Administrator';
+const kChannelText = 't.me/dastras';
+const kSupportUrl = 'https://t.me/xAdministrator';
+
+Future<void> openUrl(String url) async {
+  await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+}
 
 void main() => runApp(const App());
 
@@ -19,355 +25,226 @@ class App extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: kAppName,
-      debugShowCheckedModeBanner: false,
-      locale: const Locale('fa'),
-      supportedLocales: const [Locale('fa'), Locale('en')],
-      localizationsDelegates: const [
-        GlobalMaterialLocalizations.delegate,
-        GlobalWidgetsLocalizations.delegate,
-        GlobalCupertinoLocalizations.delegate,
-      ],
-      theme: ThemeData(
-        useMaterial3: true,
-        colorSchemeSeed: const Color(0xFF1E88E5),
-        brightness: Brightness.dark,
+    return ValueListenableBuilder<String>(
+      valueListenable: langN,
+      builder: (context, code, _) => MaterialApp(
+        title: kAppName,
+        debugShowCheckedModeBanner: false,
+        locale: Locale(code),
+        supportedLocales: const [Locale('fa'), Locale('en')],
+        localizationsDelegates: const [
+          GlobalMaterialLocalizations.delegate,
+          GlobalWidgetsLocalizations.delegate,
+          GlobalCupertinoLocalizations.delegate,
+        ],
+        theme: ThemeData(
+          useMaterial3: true,
+          brightness: Brightness.dark,
+          colorSchemeSeed: kAccent,
+          scaffoldBackgroundColor: kBg0,
+        ),
+        home: const Gate(),
       ),
-      home: const Home(),
     );
   }
 }
 
-class Home extends StatefulWidget {
-  const Home({super.key});
+/// loading -> language (first run only) -> welcome (channel) -> home
+class Gate extends StatefulWidget {
+  const Gate({super.key});
   @override
-  State<Home> createState() => _HomeState();
+  State<Gate> createState() => _GateState();
 }
 
-class _HomeState extends State<Home> {
-  final store = Store();
-  bool ready = false;
-  bool busy = false;
-  String status = 'stopped';
-  String? lastShownError;
-  Timer? timer;
-
-  bool get running => status == 'running';
-  bool get starting => status == 'starting';
+class _GateState extends State<Gate> {
+  int stage = 0; // 0 loading, 1 language, 2 welcome, 3 home
+  bool first = false;
 
   @override
   void initState() {
     super.initState();
-    _init();
+    _load();
   }
 
-  @override
-  void dispose() {
-    timer?.cancel();
-    super.dispose();
-  }
-
-  Future<void> _init() async {
-    await store.load();
-    status = await Core.status();
-    setState(() => ready = true);
-    timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
-    if (store.subs.isNotEmpty && !running) _refreshSubs(silent: true);
-  }
-
-  Future<void> _poll() async {
-    final s = await Core.status();
-    if (!mounted) return;
-    if (s != status) {
-      setState(() => status = s);
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    final saved = p.getString('lang');
+    if (saved == null) {
+      first = true;
+      setState(() => stage = 1);
+    } else {
+      langN.value = saved;
+      setState(() => stage = 2);
+      Future.delayed(const Duration(milliseconds: 2400), () {
+        if (mounted && stage == 2) setState(() => stage = 3);
+      });
     }
-    if (s.startsWith('error:') && s != lastShownError) {
-      lastShownError = s;
-      _toast('خطا: ${s.substring(6)}');
-    }
-  }
-
-  void _toast(String m) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(m)));
-  }
-
-  Future<void> _toggle() async {
-    if (running || starting) {
-      await Core.stop();
-      return;
-    }
-    if (store.nodes.isEmpty) {
-      _toast('ابتدا یک کانفیگ یا ساب اضافه کنید');
-      return;
-    }
-    lastShownError = null;
-    final node = store.nodes[store.selected];
-    final res = await Core.start(buildConfig(node.ob, store.bypassIran));
-    if (res == 'denied') _toast('دسترسی VPN داده نشد');
-  }
-
-  Future<void> _refreshSubs({bool silent = false}) async {
-    if (store.subs.isEmpty) return;
-    if (!silent) setState(() => busy = true);
-    try {
-      final all = <Node>[];
-      for (final url in store.subs) {
-        final text = await fetchSub(url);
-        final obs = await convert(text);
-        all.addAll(obs.map((o) => Node(o, 'sub')));
-      }
-      store.nodes = [...store.nodes.where((n) => n.src != 'sub'), ...all];
-      if (store.selected >= store.nodes.length) store.selected = 0;
-      await store.save();
-      if (!silent) _toast('ساب به‌روز شد (${all.length} کانفیگ)');
-    } catch (e) {
-      if (!silent) _toast('خطا: $e');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> _addText(String text) async {
-    text = text.trim();
-    if (text.isEmpty) return;
-    setState(() => busy = true);
-    try {
-      final isSub = !text.contains('\n') &&
-          (text.startsWith('http://') || text.startsWith('https://'));
-      if (isSub) {
-        if (!store.subs.contains(text)) store.subs.add(text);
-        await store.save();
-        await _refreshSubs();
-      } else {
-        final obs = await convert(text);
-        store.nodes.addAll(obs.map((o) => Node(o, 'manual')));
-        await store.save();
-        _toast('${obs.length} کانفیگ اضافه شد');
-      }
-    } catch (e) {
-      _toast('خطا: $e');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  Future<void> _ping() async {
-    if (running || starting) {
-      _toast('برای تست تأخیر ابتدا اتصال را قطع کنید');
-      return;
-    }
-    if (store.nodes.isEmpty) return;
-    setState(() => busy = true);
-    try {
-      final res = await pingBatch(store.nodes.map((n) => n.ob).toList());
-      for (var i = 0; i < store.nodes.length && i < res.length; i++) {
-        store.nodes[i].delay = res[i];
-      }
-      int? best;
-      for (var i = 0; i < store.nodes.length; i++) {
-        final d = store.nodes[i].delay;
-        if (d != null && (best == null || d < (store.nodes[best].delay ?? 99999))) {
-          best = i;
-        }
-      }
-      if (best != null) {
-        store.selected = best;
-        await store.save();
-      }
-    } catch (e) {
-      _toast('خطا: $e');
-    } finally {
-      if (mounted) setState(() => busy = false);
-    }
-  }
-
-  void _addDialog() {
-    final c = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('افزودن کانفیگ'),
-        content: TextField(
-          controller: c,
-          maxLines: 6,
-          minLines: 3,
-          textDirection: TextDirection.ltr,
-          decoration: const InputDecoration(
-            hintText: 'لینک ساب یا لینک‌های vless / vmess / trojan / ss',
-            border: OutlineInputBorder(),
-          ),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('انصراف')),
-          FilledButton(
-            onPressed: () {
-              Navigator.pop(ctx);
-              _addText(c.text);
-            },
-            child: const Text('افزودن'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _settings() {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, set) => SafeArea(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            SwitchListTile(
-              title: const Text('عبور مستقیم سایت‌ها و IPهای ایرانی'),
-              value: store.bypassIran,
-              onChanged: (v) async {
-                store.bypassIran = v;
-                await store.save();
-                set(() {});
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('حذف همه کانفیگ‌ها و ساب‌ها'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                store.nodes = [];
-                store.subs = [];
-                store.selected = 0;
-                await store.save();
-                if (mounted) setState(() {});
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('درباره'),
-              onTap: () {
-                Navigator.pop(ctx);
-                _about();
-              },
-            ),
-          ]),
-        ),
-      ),
-    );
-  }
-
-  void _about() {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text(kAppName),
-        content: const Text('کلاینت مبتنی بر هسته‌ی Xray\nبرای اخبار و پشتیبانی به کانال و ادمین سر بزنید.'),
-        actions: [
-          TextButton(onPressed: () => _open(kSupportUrl), child: const Text('پشتیبانی')),
-          FilledButton(onPressed: () => _open(kChannelUrl), child: const Text('کانال تلگرام')),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _open(String url) async {
-    await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final label = running
-        ? 'متصل شد'
-        : starting
-            ? 'در حال اتصال...'
-            : 'قطع';
+    Widget page;
+    switch (stage) {
+      case 1:
+        page = LanguagePage(
+          key: const ValueKey('lang'),
+          onPick: (code) async {
+            await saveLang(code);
+            if (mounted) setState(() => stage = 2);
+          },
+        );
+        break;
+      case 2:
+        page = WelcomePage(key: const ValueKey('welcome'), onContinue: () => setState(() => stage = 3));
+        break;
+      case 3:
+        page = const Home(key: ValueKey('home'));
+        break;
+      default:
+        page = const Backdrop(key: ValueKey('load'), child: SizedBox.expand());
+    }
+    return AnimatedSwitcher(duration: const Duration(milliseconds: 350), child: page);
+  }
+}
+
+class LanguagePage extends StatelessWidget {
+  final void Function(String) onPick;
+  const LanguagePage({super.key, required this.onPick});
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text(kAppName),
-        actions: [
-          IconButton(
-            tooltip: 'کانال تلگرام',
-            icon: const Icon(Icons.send),
-            onPressed: () => _open(kChannelUrl),
+      body: Backdrop(
+        child: SafeArea(
+          child: Center(
+            child: Padding(
+              padding: const EdgeInsets.all(28),
+              child: Column(mainAxisSize: MainAxisSize.min, children: [
+                const Logo(size: 110),
+                const SizedBox(height: 18),
+                const Text(kAppName, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700)),
+                const SizedBox(height: 36),
+                const Text('انتخاب زبان', style: TextStyle(fontSize: 20)),
+                const SizedBox(height: 4),
+                const Text('Choose your language', style: TextStyle(fontSize: 16, color: Colors.white60)),
+                const SizedBox(height: 24),
+                _LangButton(label: 'فارسی', onTap: () => onPick('fa')),
+                const SizedBox(height: 12),
+                _LangButton(label: 'English', onTap: () => onPick('en')),
+              ]),
+            ),
           ),
-          IconButton(
-            tooltip: 'تست تأخیر',
-            icon: const Icon(Icons.speed),
-            onPressed: busy ? null : _ping,
-          ),
-          IconButton(
-            tooltip: 'به‌روزرسانی ساب',
-            icon: const Icon(Icons.refresh),
-            onPressed: busy ? null : () => _refreshSubs(),
-          ),
-          IconButton(icon: const Icon(Icons.more_vert), onPressed: _settings),
-        ],
-        bottom: busy
-            ? const PreferredSize(
-                preferredSize: Size.fromHeight(3),
-                child: LinearProgressIndicator(minHeight: 3),
-              )
-            : null,
+        ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addDialog,
-        child: const Icon(Icons.add),
+    );
+  }
+}
+
+class _LangButton extends StatelessWidget {
+  final String label;
+  final VoidCallback onTap;
+  const _LangButton({required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 260,
+      height: 56,
+      child: OutlinedButton(
+        style: OutlinedButton.styleFrom(
+          backgroundColor: kGlass,
+          side: const BorderSide(color: kGlassBorder),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        ),
+        onPressed: onTap,
+        child: Text(label, style: const TextStyle(fontSize: 20, color: Colors.white)),
       ),
-      body: !ready
-          ? const Center(child: CircularProgressIndicator())
-          : Column(children: [
-              const SizedBox(height: 24),
-              GestureDetector(
-                onTap: _toggle,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 250),
-                  width: 120,
-                  height: 120,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: running ? Colors.green : (starting ? Colors.orange : cs.surfaceContainerHighest),
-                  ),
-                  child: const Icon(Icons.power_settings_new, size: 56),
+    );
+  }
+}
+
+class WelcomePage extends StatelessWidget {
+  final VoidCallback onContinue;
+  const WelcomePage({super.key, required this.onContinue});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tr((context) => Scaffold(
+          body: Backdrop(
+            child: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Logo(size: 120),
+                    const SizedBox(height: 18),
+                    const Text(kAppName, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700)),
+                    const SizedBox(height: 30),
+                    Text(tr('welcome_title'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+                    const SizedBox(height: 8),
+                    Text(tr('welcome_sub'),
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(fontSize: 15, color: Colors.white60)),
+                    const SizedBox(height: 22),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                      decoration: BoxDecoration(
+                        color: kGlass,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: kGlassBorder),
+                      ),
+                      child: Row(mainAxisSize: MainAxisSize.min, children: [
+                        const Icon(Icons.send_rounded, color: kCyan),
+                        const SizedBox(width: 12),
+                        const Directionality(
+                          textDirection: TextDirection.ltr,
+                          child: Text(kChannelText, style: TextStyle(fontSize: 20, letterSpacing: 0.5)),
+                        ),
+                        const SizedBox(width: 8),
+                        IconButton(
+                          tooltip: tr('copy'),
+                          icon: const Icon(Icons.copy_rounded, size: 20),
+                          onPressed: () async {
+                            await Clipboard.setData(const ClipboardData(text: kChannelUrl));
+                            if (context.mounted) {
+                              ScaffoldMessenger.of(context)
+                                ..hideCurrentSnackBar()
+                                ..showSnackBar(SnackBar(content: Text(tr('copied'))));
+                            }
+                          },
+                        ),
+                      ]),
+                    ),
+                    const SizedBox(height: 22),
+                    SizedBox(
+                      width: 260,
+                      height: 52,
+                      child: OutlinedButton.icon(
+                        onPressed: () => openUrl(kChannelUrl),
+                        icon: const Icon(Icons.open_in_new_rounded),
+                        label: Text(tr('open_channel')),
+                        style: OutlinedButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: 260,
+                      height: 52,
+                      child: FilledButton(
+                        onPressed: onContinue,
+                        style: FilledButton.styleFrom(
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                        ),
+                        child: Text(tr('continue'), style: const TextStyle(fontSize: 18)),
+                      ),
+                    ),
+                  ]),
                 ),
               ),
-              const SizedBox(height: 12),
-              Text(label, style: Theme.of(context).textTheme.titleMedium),
-              const SizedBox(height: 16),
-              const Divider(height: 1),
-              Expanded(
-                child: store.nodes.isEmpty
-                    ? const Center(child: Text('هنوز کانفیگی اضافه نشده.\nبا دکمه‌ی + لینک ساب یا کانفیگ اضافه کنید.', textAlign: TextAlign.center))
-                    : ListView.builder(
-                        itemCount: store.nodes.length,
-                        itemBuilder: (_, i) {
-                          final n = store.nodes[i];
-                          final sel = i == store.selected;
-                          final d = n.delay;
-                          return ListTile(
-                            selected: sel,
-                            leading: Icon(sel ? Icons.radio_button_checked : Icons.radio_button_off),
-                            title: Text(n.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(d == null ? n.protocol : '${n.protocol} • $d ms'),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.close),
-                              onPressed: () async {
-                                store.nodes.removeAt(i);
-                                if (store.selected >= store.nodes.length) store.selected = 0;
-                                await store.save();
-                                setState(() {});
-                              },
-                            ),
-                            onTap: () async {
-                              store.selected = i;
-                              await store.save();
-                              setState(() {});
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ]),
-    );
+            ),
+          ),
+        ));
   }
 }

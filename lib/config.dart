@@ -34,7 +34,8 @@ String buildConfig(Map<String, dynamic> ob, bool bypassIran) {
       {'tag': 'direct', 'protocol': 'freedom'},
       {'tag': 'block', 'protocol': 'blackhole'},
     ],
-    'routing': {'domainStrategy': 'IPIfNonMatch', 'rules': rules},
+    // AsIs avoids extra DNS lookups when no geoip rules are in use.
+    'routing': {'domainStrategy': bypassIran ? 'IPIfNonMatch' : 'AsIs', 'rules': rules},
   };
   return jsonEncode(cfg);
 }

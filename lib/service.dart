@@ -1,6 +1,10 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'core.dart';
+import 'models.dart';
+
+/// Same test URL Hiddify uses (plain HTTP, no TLS handshake in the measurement).
+const kPingUrl = 'http://cp.cloudflare.com/';
 
 /// Converts share links / subscription text into Xray outbounds via libXray.
 Future<List<Map<String, dynamic>>> convert(String text) async {
@@ -14,12 +18,28 @@ Future<List<Map<String, dynamic>>> convert(String text) async {
   return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
 }
 
-Future<String> fetchSub(String url) async {
+class SubResult {
+  final String body;
+  final SubInfo? info;
+  SubResult(this.body, this.info);
+}
+
+Future<SubResult> fetchSub(String url) async {
   final res = await http
       .get(Uri.parse(url), headers: {'User-Agent': 'DastRasNG/1.0'})
       .timeout(const Duration(seconds: 25));
   if (res.statusCode != 200) throw Exception('خطای دریافت ساب (${res.statusCode})');
-  return res.body;
+  return SubResult(res.body, parseUserInfo(res.headers['subscription-userinfo']));
+}
+
+SubInfo? parseUserInfo(String? h) {
+  if (h == null || h.isEmpty) return null;
+  final m = <String, int>{};
+  for (final part in h.split(';')) {
+    final kv = part.trim().split('=');
+    if (kv.length == 2) m[kv[0].trim()] = int.tryParse(kv[1].trim()) ?? 0;
+  }
+  return SubInfo((m['upload'] ?? 0) + (m['download'] ?? 0), m['total'] ?? 0, m['expire'] ?? 0);
 }
 
 /// Tests delays (max 5 configs per batch). Returns delay in ms per input, null on failure.
@@ -37,7 +57,7 @@ Future<List<int?>> pingBatch(List<Map<String, dynamic>> obs) async {
           }
       ],
       'timeout': 5,
-      'url': 'https://cp.cloudflare.com/',
+      'url': kPingUrl,
     });
     List items = const [];
     final d = r['data'];

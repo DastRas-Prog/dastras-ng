@@ -68,9 +68,37 @@ class XrayVpnService : VpnService(), DialerController {
                 .addRoute("::", 0)
                 .addDnsServer("1.1.1.1")
                 .addDnsServer("8.8.8.8")
+            // Per-app proxy: all | include (only chosen apps) | exclude (all except chosen)
+            var mode = "all"
+            val pkgs = ArrayList<String>()
             try {
-                builder.addDisallowedApplication(packageName)
+                val pa = JSONObject(File(filesDir, "perapp.json").readText())
+                mode = pa.optString("mode", "all")
+                val arr = pa.optJSONArray("apps")
+                if (arr != null) for (i in 0 until arr.length()) pkgs.add(arr.getString(i))
             } catch (_: Exception) {
+            }
+            if (mode == "include" && pkgs.isNotEmpty()) {
+                // Allowed and disallowed lists cannot be mixed; our own app is simply not allowed.
+                for (p in pkgs) {
+                    try {
+                        builder.addAllowedApplication(p)
+                    } catch (_: Exception) {
+                    }
+                }
+            } else {
+                try {
+                    builder.addDisallowedApplication(packageName)
+                } catch (_: Exception) {
+                }
+                if (mode == "exclude") {
+                    for (p in pkgs) {
+                        try {
+                            builder.addDisallowedApplication(p)
+                        } catch (_: Exception) {
+                        }
+                    }
+                }
             }
 
             val pfd = builder.establish() ?: throw IllegalStateException("VPN establish failed")
