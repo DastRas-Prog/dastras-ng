@@ -61,6 +61,9 @@ jobs:
           mkdir -p assets android/app/libs
           cp ../assets/geoip.dat ../assets/geosite.dat assets/
           cp ../aar/libXray.aar android/app/libs/
+          cp ../assets/logo.png assets/
+          rm -rf android/app/src/main/res/mipmap-anydpi*
+          cp -r ../android_overlay/res/* android/app/src/main/res/
           cp ../android_overlay/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
           KDIR=android/app/src/main/kotlin/com/dastras/ng
           mkdir -p $KDIR
