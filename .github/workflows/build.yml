@@ -52,6 +52,9 @@ jobs:
           ls -la assets
 
       - name: Assemble Flutter project and build APK
+        env:
+          KS_B64: ${{ secrets.KEYSTORE_B64 }}
+          KS_PASS: ${{ secrets.KEYSTORE_PASSWORD }}
         run: |
           flutter create --org com.dastras --project-name ng --platforms android app_build
           cd app_build
@@ -59,9 +62,8 @@ jobs:
           cp ../pubspec.yaml .
           cp -r ../lib .
           mkdir -p assets android/app/libs
-          cp ../assets/geoip.dat ../assets/geosite.dat assets/
+          cp ../assets/geoip.dat ../assets/geosite.dat ../assets/logo.png assets/
           cp ../aar/libXray.aar android/app/libs/
-          cp ../assets/logo.png assets/
           rm -rf android/app/src/main/res/mipmap-anydpi*
           cp -r ../android_overlay/res/* android/app/src/main/res/
           cp ../android_overlay/AndroidManifest.xml android/app/src/main/AndroidManifest.xml
@@ -70,12 +72,69 @@ jobs:
           rm -f $KDIR/*.kt
           cp ../android_overlay/*.kt $KDIR/
           if [ -f android/app/build.gradle.kts ]; then
-            printf '\ndependencies {\n    implementation(files("libs/libXray.aar"))\n}\n' >> android/app/build.gradle.kts
+            cat >> android/app/build.gradle.kts << 'GRADLE'
+
+          dependencies {
+              implementation(files("libs/libXray.aar"))
+          }
+          GRADLE
           else
-            printf '\ndependencies {\n    implementation files("libs/libXray.aar")\n}\n' >> android/app/build.gradle
+            cat >> android/app/build.gradle << 'GRADLE'
+
+          dependencies {
+              implementation files("libs/libXray.aar")
+          }
+          GRADLE
+          fi
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ]; then
+            echo "$KS_B64" | base64 -d > android/app/release.p12
+            if [ -f android/app/build.gradle.kts ]; then
+              cat >> android/app/build.gradle.kts << 'GRADLE'
+
+          android {
+              signingConfigs {
+                  create("release") {
+                      storeFile = file("release.p12")
+                      storePassword = System.getenv("KS_PASS")
+                      keyAlias = "dastras"
+                      keyPassword = System.getenv("KS_PASS")
+                      storeType = "pkcs12"
+                  }
+              }
+              buildTypes {
+                  getByName("release") {
+                      signingConfig = signingConfigs.getByName("release")
+                  }
+              }
+          }
+          GRADLE
+            else
+              cat >> android/app/build.gradle << 'GRADLE'
+
+          android {
+              signingConfigs {
+                  release {
+                      storeFile file("release.p12")
+                      storePassword System.getenv("KS_PASS")
+                      keyAlias "dastras"
+                      keyPassword System.getenv("KS_PASS")
+                      storeType "pkcs12"
+                  }
+              }
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.release
+                  }
+              }
+          }
+          GRADLE
+            fi
+            echo "Signing with the release key"
+          else
+            echo "No release key secrets found - using the default debug signing"
           fi
           flutter pub get
-          flutter build apk --release --split-per-abi
+          flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols
 
       - uses: actions/upload-artifact@v4
         with:
