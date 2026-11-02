@@ -52,9 +52,11 @@ class _BackdropState extends State<Backdrop> with SingleTickerProviderStateMixin
       child: Stack(children: [
         Positioned.fill(
           child: IgnorePointer(
-            child: AnimatedBuilder(
-              animation: _c,
-              builder: (_, __) => CustomPaint(painter: GlobePainter(_c.value * 2 * math.pi)),
+            child: RepaintBoundary(
+              child: AnimatedBuilder(
+                animation: _c,
+                builder: (_, __) => CustomPaint(painter: GlobePainter(_c.value * 2 * math.pi)),
+              ),
             ),
           ),
         ),

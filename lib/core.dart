@@ -8,6 +8,12 @@ class AppInfo {
   AppInfo(this.pkg, this.name, this.icon);
 }
 
+class Traffic {
+  final int down, up, totDown, totUp; // bytes/s, bytes/s, bytes, bytes
+  const Traffic(this.down, this.up, this.totDown, this.totUp);
+  static const zero = Traffic(0, 0, 0, 0);
+}
+
 /// Bridge to the native side (libXray + VpnService).
 class Core {
   static const _ch = MethodChannel('dastras/core');
@@ -25,11 +31,21 @@ class Core {
   }
 
   /// mode: all | include | exclude
-  static Future<String> start(String config, String mode, List<String> apps) async =>
+  static Future<String> start(
+    String config, {
+    required String mode,
+    required List<String> apps,
+    required List<String> dns,
+    required bool ipv6,
+    required String lang,
+  }) async =>
       (await _ch.invokeMethod<String>('start', {
         'config': config,
         'mode': mode,
         'apps': apps,
+        'dns': dns,
+        'ipv6': ipv6,
+        'lang': lang,
       })) ??
       'error';
 
@@ -37,6 +53,15 @@ class Core {
 
   static Future<String> status() async =>
       (await _ch.invokeMethod<String>('status')) ?? 'stopped';
+
+  static Future<Traffic> stats() async {
+    final s = await _ch.invokeMethod<String>('stats');
+    final p = (s ?? '').split(',').map((e) => int.tryParse(e) ?? 0).toList();
+    if (p.length < 4) return Traffic.zero;
+    return Traffic(p[0], p[1], p[2], p[3]);
+  }
+
+  static Future<void> vpnSettings() => _ch.invokeMethod('vpnSettings');
 
   static Future<List<AppInfo>> apps() async {
     final s = await _ch.invokeMethod<String>('apps');

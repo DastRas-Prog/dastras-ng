@@ -12,10 +12,23 @@ import 'theme.dart';
 const kAppName = 'DastRas NG';
 const kChannelUrl = 'https://t.me/dastras';
 const kChannelText = 't.me/dastras';
-const kSupportUrl = 'https://t.me/xAdministrator';
+const kChannelUser = 'dastras';
+const kSupportUser = 'xAdministrator';
 
 Future<void> openUrl(String url) async {
   await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+}
+
+/// Opens the Telegram app directly (no browser); falls back to the web link.
+Future<void> openTelegram(String user) async {
+  try {
+    final ok = await launchUrl(
+      Uri.parse('tg://resolve?domain=$user'),
+      mode: LaunchMode.externalApplication,
+    );
+    if (ok) return;
+  } catch (_) {}
+  await openUrl('https://t.me/$user');
 }
 
 void main() => runApp(const App());
@@ -220,7 +233,7 @@ class WelcomePage extends StatelessWidget {
                       width: 260,
                       height: 52,
                       child: OutlinedButton.icon(
-                        onPressed: () => openUrl(kChannelUrl),
+                        onPressed: () => openTelegram(kChannelUser),
                         icon: const Icon(Icons.open_in_new_rounded),
                         label: Text(tr('open_channel')),
                         style: OutlinedButton.styleFrom(

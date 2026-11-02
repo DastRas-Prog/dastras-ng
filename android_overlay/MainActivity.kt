@@ -2,7 +2,11 @@ package com.dastras.ng
 
 import android.content.Intent
 import android.graphics.Bitmap
+import android.content.pm.PackageManager
 import android.graphics.Canvas
+import android.os.Build
+import android.os.Bundle
+import android.provider.Settings
 import android.net.VpnService
 import android.util.Base64
 import androidx.core.content.ContextCompat
@@ -17,6 +21,15 @@ import java.io.File
 
 class MainActivity : FlutterActivity() {
     private var pending: MethodChannel.Result? = null
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        if (Build.VERSION.SDK_INT >= 33 &&
+            checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPermissions(arrayOf("android.permission.POST_NOTIFICATIONS"), 7)
+        }
+    }
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -39,8 +52,16 @@ class MainActivity : FlutterActivity() {
                         File(filesDir, "config.json").writeText(a["config"] as String)
                         val apps = JSONArray()
                         (a["apps"] as? List<*>)?.forEach { apps.put(it.toString()) }
-                        File(filesDir, "perapp.json").writeText(
-                            JSONObject().put("mode", (a["mode"] as? String) ?: "all").put("apps", apps).toString()
+                        val dns = JSONArray()
+                        (a["dns"] as? List<*>)?.forEach { dns.put(it.toString()) }
+                        File(filesDir, "settings.json").writeText(
+                            JSONObject()
+                                .put("mode", (a["mode"] as? String) ?: "all")
+                                .put("apps", apps)
+                                .put("dns", dns)
+                                .put("ipv6", (a["ipv6"] as? Boolean) ?: true)
+                                .put("lang", (a["lang"] as? String) ?: "fa")
+                                .toString()
                         )
                         val intent = VpnService.prepare(this)
                         if (intent != null) {
@@ -56,6 +77,17 @@ class MainActivity : FlutterActivity() {
                         result.success("ok")
                     }
                     "status" -> result.success(XrayVpnService.state)
+                    "stats" -> result.success(
+                        "${XrayVpnService.down},${XrayVpnService.up},${XrayVpnService.totDown},${XrayVpnService.totUp}"
+                    )
+                    "vpnSettings" -> {
+                        try {
+                            startActivity(Intent(Settings.ACTION_VPN_SETTINGS))
+                        } catch (_: Exception) {
+                            startActivity(Intent(Settings.ACTION_WIRELESS_SETTINGS))
+                        }
+                        result.success("ok")
+                    }
                     "apps" -> {
                         Thread {
                             val res = try {
