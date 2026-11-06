@@ -1,1 +1,9 @@
-[]
+[
+  {
+    "id": 1,
+    "title": "Maintenance tonight",
+    "body": "The servers will be updated at 23:50. Connection may drop for a few minutes.",
+    "url": "https://t.me/dastras",
+    "date": "1405-08-15"
+  }
+]
