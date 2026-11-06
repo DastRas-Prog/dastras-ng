@@ -38,6 +38,8 @@ class Core {
     required List<String> dns,
     required bool ipv6,
     required String lang,
+    int mtu = 1500,
+    List<String> announceUrls = const [],
   }) async =>
       (await _ch.invokeMethod<String>('start', {
         'config': config,
@@ -45,7 +47,9 @@ class Core {
         'apps': apps,
         'dns': dns,
         'ipv6': ipv6,
+        'mtu': mtu,
         'lang': lang,
+        'ann': announceUrls,
       })) ??
       'error';
 
@@ -60,6 +64,21 @@ class Core {
     if (p.length < 4) return Traffic.zero;
     return Traffic(p[0], p[1], p[2], p[3]);
   }
+
+  /// Fetches the announcements JSON natively. Returns the raw JSON array or null on failure.
+  /// With notify=true new items also become system notifications.
+  static Future<String?> announceCheck(List<String> urls, {bool notify = false}) async {
+    final r = await _ch.invokeMethod<String>('announce', {'urls': urls, 'notify': notify});
+    return (r == null || r.isEmpty) ? null : r;
+  }
+
+  static Future<String> abi() async => (await _ch.invokeMethod<String>('abi')) ?? 'arm64-v8a';
+
+  static Future<String> cacheDir() async => (await _ch.invokeMethod<String>('cacheDir')) ?? '';
+
+  /// Opens the system installer. Returns ok | needs_permission | error:...
+  static Future<String> installApk(String path) async =>
+      (await _ch.invokeMethod<String>('installApk', path)) ?? 'error';
 
   static Future<void> vpnSettings() => _ch.invokeMethod('vpnSettings');
 

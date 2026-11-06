@@ -3,6 +3,8 @@ package com.dastras.ng
 import android.content.Intent
 import android.graphics.Bitmap
 import android.content.pm.PackageManager
+import android.net.Uri
+import androidx.core.content.FileProvider
 import android.graphics.Canvas
 import android.os.Build
 import android.os.Bundle
@@ -52,6 +54,8 @@ class MainActivity : FlutterActivity() {
                         File(filesDir, "config.json").writeText(a["config"] as String)
                         val apps = JSONArray()
                         (a["apps"] as? List<*>)?.forEach { apps.put(it.toString()) }
+                        val ann = JSONArray()
+                        (a["ann"] as? List<*>)?.forEach { ann.put(it.toString()) }
                         val dns = JSONArray()
                         (a["dns"] as? List<*>)?.forEach { dns.put(it.toString()) }
                         File(filesDir, "settings.json").writeText(
@@ -59,7 +63,9 @@ class MainActivity : FlutterActivity() {
                                 .put("mode", (a["mode"] as? String) ?: "all")
                                 .put("apps", apps)
                                 .put("dns", dns)
+                                .put("ann", ann)
                                 .put("ipv6", (a["ipv6"] as? Boolean) ?: true)
+                                .put("mtu", (a["mtu"] as? Int) ?: 1500)
                                 .put("lang", (a["lang"] as? String) ?: "fa")
                                 .toString()
                         )
@@ -73,13 +79,56 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "stop" -> {
-                        startService(Intent(this, XrayVpnService::class.java).setAction(XrayVpnService.ACTION_STOP))
+                        val svc = XrayVpnService.instance
+                        if (svc != null) {
+                            svc.requestStop(false)
+                        } else {
+                            // service already gone: make sure nothing is left running
+                            stopService(Intent(this, XrayVpnService::class.java))
+                            XrayVpnService.state = "stopped"
+                        }
                         result.success("ok")
+                    }
+                    "abi" -> result.success(Build.SUPPORTED_ABIS.firstOrNull() ?: "arm64-v8a")
+                    "cacheDir" -> result.success(cacheDir.absolutePath)
+                    "installApk" -> {
+                        try {
+                            val file = File(call.arguments as String)
+                            if (Build.VERSION.SDK_INT >= 26 && !packageManager.canRequestPackageInstalls()) {
+                                startActivity(
+                                    Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+                                )
+                                result.success("needs_permission")
+                            } else {
+                                val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+                                startActivity(
+                                    Intent(Intent.ACTION_VIEW)
+                                        .setDataAndType(uri, "application/vnd.android.package-archive")
+                                        .addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                )
+                                result.success("ok")
+                            }
+                        } catch (t: Throwable) {
+                            result.success("error:" + (t.message ?: "install"))
+                        }
                     }
                     "status" -> result.success(XrayVpnService.state)
                     "stats" -> result.success(
                         "${XrayVpnService.down},${XrayVpnService.up},${XrayVpnService.totDown},${XrayVpnService.totUp}"
                     )
+                    "announce" -> {
+                        val a = call.arguments as Map<*, *>
+                        val urls = (a["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
+                        val post = (a["notify"] as? Boolean) ?: false
+                        Thread {
+                            val res = try {
+                                Announcer.check(this, urls, post) ?: ""
+                            } catch (t: Throwable) {
+                                ""
+                            }
+                            runOnUiThread { result.success(res) }
+                        }.start()
+                    }
                     "vpnSettings" -> {
                         try {
                             startActivity(Intent(Settings.ACTION_VPN_SETTINGS))

@@ -3,16 +3,20 @@ import 'package:flutter/material.dart';
 import 'core.dart';
 import 'lang.dart';
 import 'models.dart';
+import 'pal.dart';
 import 'theme.dart';
 
 class AppsPage extends StatefulWidget {
   final Store store;
-  const AppsPage({super.key, required this.store});
+  final bool embedded;
+  final VoidCallback? onChanged;
+  const AppsPage({super.key, required this.store, this.embedded = false, this.onChanged});
   @override
   State<AppsPage> createState() => _AppsPageState();
 }
 
 class _AppsPageState extends State<AppsPage> {
+  static List<AppInfo>? _cache; // the icon list is heavy: load it once
   List<AppInfo>? apps;
   String q = '';
   late String mode;
@@ -23,12 +27,13 @@ class _AppsPageState extends State<AppsPage> {
     super.initState();
     mode = widget.store.perAppMode;
     sel = {...widget.store.perAppList};
-    _load();
+    apps = _cache;
+    if (apps == null) _load();
   }
 
   Future<void> _load() async {
     try {
-      apps = await Core.apps();
+      apps = _cache = await Core.apps();
     } catch (_) {
       apps = [];
     }
@@ -39,6 +44,7 @@ class _AppsPageState extends State<AppsPage> {
     widget.store.perAppMode = mode;
     widget.store.perAppList = sel;
     await widget.store.save();
+    widget.onChanged?.call();
   }
 
   @override
@@ -48,21 +54,15 @@ class _AppsPageState extends State<AppsPage> {
           .where((a) => q.isEmpty || a.name.toLowerCase().contains(q.toLowerCase()) || a.pkg.contains(q))
           .toList();
       final enabled = mode != 'all';
-      return Scaffold(
-        body: Backdrop(
-          child: SafeArea(
-            child: Column(children: [
+      final content = Column(children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 4, 16, 0),
                 child: Row(children: [
-                  IconButton(
-                    icon: const Icon(Icons.arrow_back_rounded),
-                    onPressed: () => Navigator.pop(context),
-                  ),
-                  Text(tr('per_app'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+                  if (widget.embedded) const SizedBox(width: 16) else IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => Navigator.pop(context)),
+                  Text(tr('per_app'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Pal.t1)),
                   const Spacer(),
                   if (sel.isNotEmpty)
-                    Text('${sel.length} ${tr('apps_selected')}', style: const TextStyle(color: Colors.white60)),
+                    Text('${sel.length} ${tr('apps_selected')}', style: TextStyle(color: Pal.t3)),
                 ]),
               ),
               Padding(
@@ -90,7 +90,7 @@ class _AppsPageState extends State<AppsPage> {
                   alignment: AlignmentDirectional.centerStart,
                   child: Text(
                     mode == 'all' ? tr('per_app_note_all') : (mode == 'include' ? tr('per_app_note_include') : ''),
-                    style: const TextStyle(fontSize: 12.5, color: Colors.white54),
+                    style: TextStyle(fontSize: 12.5, color: Pal.t3),
                   ),
                 ),
               ),
@@ -102,12 +102,9 @@ class _AppsPageState extends State<AppsPage> {
                     hintText: tr('search'),
                     prefixIcon: const Icon(Icons.search_rounded),
                     filled: true,
-                    fillColor: kGlass,
+                    fillColor: Pal.card,
                     contentPadding: const EdgeInsets.symmetric(vertical: 0),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
-                      borderSide: BorderSide.none,
-                    ),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
                   ),
                 ),
               ),
@@ -115,12 +112,12 @@ class _AppsPageState extends State<AppsPage> {
                 child: apps == null
                     ? const Center(child: CircularProgressIndicator())
                     : ListView.builder(
+                        padding: EdgeInsets.only(bottom: widget.embedded ? 110 : 0),
                         itemCount: list.length,
                         itemBuilder: (_, i) {
                           final a = list[i];
-                          final on = sel.contains(a.pkg);
                           return CheckboxListTile(
-                            value: on,
+                            value: sel.contains(a.pkg),
                             enabled: enabled,
                             onChanged: (v) async {
                               setState(() {
@@ -140,15 +137,13 @@ class _AppsPageState extends State<AppsPage> {
                             subtitle: Text(a.pkg,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(fontSize: 11.5, color: Colors.white38)),
+                                style: TextStyle(fontSize: 11.5, color: Pal.t4)),
                           );
                         },
                       ),
               ),
-            ]),
-          ),
-        ),
-      );
+      ]);
+      return widget.embedded ? content : Scaffold(body: Backdrop(child: SafeArea(child: content)));
     });
   }
 }

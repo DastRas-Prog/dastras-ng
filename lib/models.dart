@@ -126,16 +126,23 @@ class Store {
   bool bypassIran = true;
   bool autoSelect = true;
   bool autoUpdate = true;
+  int updateEveryMin = 180; // 0 = only the first open of each day
   bool connectOnOpen = false;
   bool clipboardWatch = true;
   bool httpsOnly = true;
   String pingMode = 'tcp';
-  String testUrl = 'http://cp.cloudflare.com/';
-  String dns = 'cloudflare';
-  bool ipv6 = true;
+  String testUrl = 'http://connectivitycheck.gstatic.com/generate_204';
+  String dns = 'google';
+  bool ipv6 = false;
   bool fragment = false;
   bool mux = false;
   bool blockAds = false;
+  bool announceOn = true;
+  int annRead = -1; // highest announcement id the user has seen
+  String annJson = '[]';
+  bool blockQuic = true; // QUIC (UDP 443) is slow through proxies; apps fall back to TCP
+  int mtu = 1500;
+  bool panelTuning = false; // use the panel's own fragment/mux (slower, for strict filtering)
 
   // Sensitive data (servers, subscription links) goes to the Android Keystore-backed
   // secure storage; falls back to plain prefs only if secure storage is unavailable.
@@ -190,16 +197,23 @@ class Store {
     bypassIran = _p.getBool('bypassIran') ?? true;
     autoSelect = _p.getBool('autoSelect') ?? true;
     autoUpdate = _p.getBool('autoUpdate') ?? true;
+    updateEveryMin = _p.getInt('updateEveryMin') ?? 180;
     connectOnOpen = _p.getBool('connectOnOpen') ?? false;
     clipboardWatch = _p.getBool('clipboardWatch') ?? true;
     httpsOnly = _p.getBool('httpsOnly') ?? true;
     pingMode = _p.getString('pingMode') ?? 'tcp';
-    testUrl = _p.getString('testUrl') ?? 'http://cp.cloudflare.com/';
-    dns = _p.getString('dns') ?? 'cloudflare';
-    ipv6 = _p.getBool('ipv6') ?? true;
+    testUrl = _p.getString('testUrl') ?? 'http://connectivitycheck.gstatic.com/generate_204';
+    dns = _p.getString('dns') ?? 'google';
+    ipv6 = _p.getBool('ipv6') ?? false;
+    announceOn = _p.getBool('announceOn') ?? true;
+    annRead = _p.getInt('annRead') ?? -1;
+    annJson = _p.getString('annJson') ?? '[]';
     fragment = _p.getBool('fragment') ?? false;
     mux = _p.getBool('mux') ?? false;
     blockAds = _p.getBool('blockAds') ?? false;
+    panelTuning = _p.getBool('panelTuning') ?? false;
+    blockQuic = _p.getBool('blockQuic') ?? true;
+    mtu = _p.getInt('mtu') ?? 1500;
 
     final inf = _p.getString('subinfo');
     if (inf != null) {
@@ -226,6 +240,7 @@ class Store {
     await _p.setBool('bypassIran', bypassIran);
     await _p.setBool('autoSelect', autoSelect);
     await _p.setBool('autoUpdate', autoUpdate);
+    await _p.setInt('updateEveryMin', updateEveryMin);
     await _p.setBool('connectOnOpen', connectOnOpen);
     await _p.setBool('clipboardWatch', clipboardWatch);
     await _p.setBool('httpsOnly', httpsOnly);
@@ -236,6 +251,12 @@ class Store {
     await _p.setBool('fragment', fragment);
     await _p.setBool('mux', mux);
     await _p.setBool('blockAds', blockAds);
+    await _p.setBool('panelTuning', panelTuning);
+    await _p.setBool('blockQuic', blockQuic);
+    await _p.setInt('mtu', mtu);
+    await _p.setBool('announceOn', announceOn);
+    await _p.setInt('annRead', annRead);
+    await _p.setString('annJson', annJson);
     if (info != null) {
       await _p.setString('subinfo', jsonEncode(info!.toJson()));
     } else {

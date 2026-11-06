@@ -33,20 +33,32 @@ class XrayVpnService : VpnService(), DialerController {
         @Volatile var up = 0L
         @Volatile var totDown = 0L
         @Volatile var totUp = 0L
+
+        // the running service, so the app can stop it directly
+        @Volatile var instance: XrayVpnService? = null
     }
 
+    private val lock = Any()
     private var tun: ParcelFileDescriptor? = null
     private var monitor: Thread? = null
+    private var annThread: Thread? = null
+    private val annUrls = ArrayList<String>()
     @Volatile private var monitoring = false
     @Volatile private var closed = false
+    @Volatile private var xrayRunning = false
     private var lang = "fa"
 
     // Called by libXray for every outbound socket so it bypasses the VPN.
     override fun protectFd(fd: Long): Boolean = protect(fd.toInt())
 
+    override fun onCreate() {
+        super.onCreate()
+        instance = this
+    }
+
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
-            stopCore(false)
+            requestStop(false)
             return START_NOT_STICKY
         }
         closed = false
@@ -69,6 +81,11 @@ class XrayVpnService : VpnService(), DialerController {
         return JSONObject(LibXray.invoke(req.toString()))
     }
 
+    /** Never blocks the caller: the real shutdown runs on its own thread. */
+    fun requestStop(keepState: Boolean) {
+        Thread { shutdown(keepState) }.start()
+    }
+
     private fun startCore() {
         try {
             val datDir = File(filesDir, "dat").apply { mkdirs() }
@@ -82,6 +99,7 @@ class XrayVpnService : VpnService(), DialerController {
 
             var mode = "all"
             var ipv6 = true
+            var mtu = 1500
             val pkgs = ArrayList<String>()
             val dns = ArrayList<String>()
             val setFile = File(filesDir, "settings.json")
@@ -89,8 +107,11 @@ class XrayVpnService : VpnService(), DialerController {
                 val pa = JSONObject(setFile.readText())
                 mode = pa.optString("mode", "all")
                 ipv6 = pa.optBoolean("ipv6", true)
+                mtu = pa.optInt("mtu", 1500).coerceIn(1280, 1500)
                 val arr = pa.optJSONArray("apps")
                 if (arr != null) for (i in 0 until arr.length()) pkgs.add(arr.getString(i))
+                val an = pa.optJSONArray("ann")
+                if (an != null) for (i in 0 until an.length()) annUrls.add(an.getString(i))
                 val d = pa.optJSONArray("dns")
                 if (d != null) for (i in 0 until d.length()) dns.add(d.getString(i))
             } catch (_: Exception) {
@@ -103,9 +124,10 @@ class XrayVpnService : VpnService(), DialerController {
 
             val builder = Builder()
                 .setSession("DastRas NG")
-                .setMtu(1500)
+                .setMtu(mtu)
                 .addAddress("172.19.0.1", 30)
                 .addRoute("0.0.0.0", 0)
+            if (Build.VERSION.SDK_INT >= 29) builder.setMetered(false)
             if (ipv6) {
                 builder.addAddress("fdfe:dcba:9876::1", 126).addRoute("::", 0)
             }
@@ -113,7 +135,6 @@ class XrayVpnService : VpnService(), DialerController {
 
             // Per-app proxy: all | include (only chosen apps) | exclude (all except chosen)
             if (mode == "include" && pkgs.isNotEmpty()) {
-                // Allowed and disallowed lists cannot be mixed; our own app is simply not allowed.
                 for (p in pkgs) {
                     try {
                         builder.addAllowedApplication(p)
@@ -136,15 +157,24 @@ class XrayVpnService : VpnService(), DialerController {
             }
 
             val pfd = builder.establish() ?: throw IllegalStateException("VPN establish failed")
-            if (closed) {
-                try {
-                    pfd.close()
-                } catch (_: Throwable) {
+            // Xray gets its own duplicate of the tunnel fd; we keep the original so we can
+            // always close it ourselves (a detached fd could never be closed from here).
+            val fd = pfd.dup().detachFd()
+            synchronized(lock) {
+                if (closed) { // a stop arrived while the tunnel was being created
+                    try {
+                        pfd.close()
+                    } catch (_: Throwable) {
+                    }
+                    try {
+                        ParcelFileDescriptor.adoptFd(fd).close()
+                    } catch (_: Throwable) {
+                    }
+                    stopSelf()
+                    return
                 }
-                return
+                tun = pfd
             }
-            tun = pfd
-            val fd = pfd.detachFd()
 
             val env = cfg.optJSONObject("env") ?: JSONObject()
             env.put("xray.tun.fd", fd.toString())
@@ -162,18 +192,17 @@ class XrayVpnService : VpnService(), DialerController {
             if (!resp.optBoolean("success", false)) {
                 throw IllegalStateException(resp.optString("error", "runXray failed"))
             }
-            if (closed) {
-                try {
-                    invoke("stopXray")
-                } catch (_: Throwable) {
-                }
+            xrayRunning = true
+            if (closed) { // stop requested while Xray was starting
+                shutdown(false)
                 return
             }
             state = "running"
             startMonitor()
+            startAnnouncements()
         } catch (t: Throwable) {
             state = "error:" + (t.message ?: t.javaClass.simpleName)
-            stopCore(true)
+            shutdown(true)
         }
     }
 
@@ -212,37 +241,77 @@ class XrayVpnService : VpnService(), DialerController {
         }.also { it.start() }
     }
 
-    private fun stopCore(keepState: Boolean) {
-        closed = true
-        monitoring = false
-        monitor?.interrupt()
-        monitor = null
-        down = 0; up = 0; totDown = 0; totUp = 0
-        try {
-            invoke("stopXray")
-        } catch (_: Throwable) {
+    private fun startAnnouncements() {
+        if (annUrls.isEmpty()) return
+        annThread = Thread {
+            try {
+                Thread.sleep(20_000)
+                while (monitoring) {
+                    try {
+                        Announcer.check(this, annUrls, true)
+                    } catch (_: Exception) {
+                    }
+                    Thread.sleep(10 * 60 * 1000L)
+                }
+            } catch (_: InterruptedException) {
+            }
+        }.also { it.start() }
+    }
+
+    /**
+     * Tears everything down. Safe to call more than once and from any thread. The service is
+     * always stopped at the end, which also removes the VPN key icon from the status bar.
+     */
+    @Suppress("DEPRECATION")
+    private fun shutdown(keepState: Boolean) {
+        synchronized(lock) {
+            closed = true
+            monitoring = false
+            monitor?.interrupt()
+            monitor = null
+            annThread?.interrupt()
+            annThread = null
+            down = 0; up = 0; totDown = 0; totUp = 0
+            if (xrayRunning) {
+                // stopXray must never be able to hang the shutdown
+                val t = Thread {
+                    try {
+                        invoke("stopXray")
+                    } catch (_: Throwable) {
+                    }
+                }
+                t.start()
+                try {
+                    t.join(4000)
+                } catch (_: InterruptedException) {
+                }
+                xrayRunning = false
+            }
+            try {
+                LibXray.resetDNS()
+            } catch (_: Throwable) {
+            }
+            try {
+                tun?.close()
+            } catch (_: Throwable) {
+            }
+            tun = null
+            if (!keepState) state = "stopped"
         }
         try {
-            LibXray.resetDNS()
+            stopForeground(true)
         } catch (_: Throwable) {
         }
-        try {
-            tun?.close()
-        } catch (_: Throwable) {
-        }
-        tun = null
-        if (!keepState) state = "stopped"
-        @Suppress("DEPRECATION")
-        stopForeground(true)
         stopSelf()
     }
 
     override fun onRevoke() {
-        stopCore(false)
+        requestStop(false)
     }
 
     override fun onDestroy() {
-        if (!closed) stopCore(false)
+        instance = null
+        if (!closed) Thread { shutdown(false) }.start()
         super.onDestroy()
     }
 

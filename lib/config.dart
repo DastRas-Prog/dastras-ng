@@ -38,8 +38,23 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
       : <String, dynamic>{};
   final sec = (stream['security'] ?? '').toString();
 
+  // Panel-provided fragment / mux slow down every connection, so they are only kept
+  // when the user asks for them (strict filtering).
+  if (!s.panelTuning) {
+    proxy.remove('mux');
+    if (stream['sockopt'] is Map) {
+      final so = Map<String, dynamic>.from(stream['sockopt'] as Map)..remove('dialerProxy');
+      if (so.isEmpty) {
+        stream.remove('sockopt');
+      } else {
+        stream['sockopt'] = so;
+      }
+      proxy['streamSettings'] = stream;
+    }
+  }
+
   final sockNow = stream['sockopt'] is Map ? stream['sockopt'] as Map : const {};
-  final serverTuned = sockNow['dialerProxy'] != null; // panel (e.g. Marzban) already set fragment/noise
+  final serverTuned = s.panelTuning && sockNow['dialerProxy'] != null; // panel (e.g. Marzban) already set fragment/noise
 
   // TLS fragmentation: splits the TLS hello so DPI can't read the SNI.
   if (serverTuned) {
@@ -81,6 +96,8 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
   if (!outbounds.any((o) => o['tag'] == 'block')) outbounds.add({'tag': 'block', 'protocol': 'blackhole'});
 
   final rules = <Map<String, dynamic>>[
+    if (s.blockQuic)
+      {'type': 'field', 'network': 'udp', 'port': '443', 'outboundTag': 'block'},
     if (s.blockAds)
       {'type': 'field', 'domain': ['geosite:category-ads-all'], 'outboundTag': 'block'},
     {'type': 'field', 'ip': ['geoip:private'], 'outboundTag': 'direct'},
@@ -92,12 +109,12 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
 
   final cfg = {
     'log': {'loglevel': 'warning'},
-    'dns': {'servers': dnsList(s)},
+    'dns': {'servers': dnsList(s), 'queryStrategy': s.ipv6 ? 'UseIP' : 'UseIPv4'},
     'inbounds': [
       {
         'tag': 'tun-in',
         'protocol': 'tun',
-        'settings': {'name': 'xray0', 'MTU': 1500},
+        'settings': {'name': 'xray0', 'MTU': s.mtu},
         'sniffing': {
           'enabled': true,
           'destOverride': ['http', 'tls', 'quic']

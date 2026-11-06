@@ -14,8 +14,11 @@ const kTestUrls = <String, String>{
   'https://www.reddit.com/': 'Reddit',
 };
 
-// Some panels answer differently depending on the client, so try several.
-const _userAgents = ['Happ/1.0', 'v2rayNG/1.9.0', 'Hiddify/2.5.7', 'DastRasNG/1.3'];
+// Panels answer differently depending on the client. Plain share links (unknown client)
+// give light, fast configs; Happ/v2rayNG-style clients may get the panel's JSON with
+// fragment/mux baked in.
+const _linkAgents = ['DastRasNG/1.4', 'v2rayNG/1.9.0', 'Happ/1.0', 'Hiddify/2.5.7'];
+const _jsonAgents = ['Happ/1.0', 'v2rayNG/1.9.0', 'Hiddify/2.5.7', 'DastRasNG/1.4'];
 
 const _notProxy = {'freedom', 'blackhole', 'dns', 'loopback'};
 
@@ -111,9 +114,9 @@ String? _decodeTitle(String? h) {
   return h;
 }
 
-Future<SubParsed> fetchAndParse(String url) async {
+Future<SubParsed> fetchAndParse(String url, {bool preferJson = false}) async {
   Object? last;
-  for (final ua in _userAgents) {
+  for (final ua in (preferJson ? _jsonAgents : _linkAgents)) {
     try {
       final res = await http
           .get(Uri.parse(url), headers: {'User-Agent': ua})

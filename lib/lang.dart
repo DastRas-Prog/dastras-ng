@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'pal.dart';
 
 final ValueNotifier<String> langN = ValueNotifier<String>('fa');
 
@@ -14,15 +15,15 @@ Future<void> saveLang(String code) async {
 
 String tr(String k) => (isFa ? _fa : _en)[k] ?? k;
 
-/// Rebuilds its child whenever the language changes.
+/// Rebuilds its child whenever the language or the theme changes.
 class Tr extends StatelessWidget {
   final Widget Function(BuildContext) builder;
   const Tr(this.builder, {super.key});
 
   @override
-  Widget build(BuildContext context) => ValueListenableBuilder<String>(
-        valueListenable: langN,
-        builder: (c, _, __) => builder(c),
+  Widget build(BuildContext context) => AnimatedBuilder(
+        animation: Listenable.merge([langN, themeN]),
+        builder: (c, _) => builder(c),
       );
 }
 
@@ -89,7 +90,7 @@ const _fa = {
   'sec_support': 'پشتیبانی',
   'opt_auto_select': 'انتخاب خودکار بهترین و پایدارترین سرور',
   'opt_auto_select_sub': 'قبل از هر اتصال، سرورها تست می‌شوند و بهترین انتخاب می‌شود',
-  'opt_auto_update': 'به‌روزرسانی خودکار ساب (هنگام باز شدن و هر ۳ ساعت)',
+  'opt_auto_update': 'به‌روزرسانی خودکار ساب',
   'opt_connect_open': 'اتصال خودکار هنگام باز شدن برنامه',
   'opt_clipboard': 'تشخیص خودکار لینک کپی‌شده',
   'opt_ping_mode': 'روش نمایش پینگ',
@@ -107,10 +108,54 @@ const _fa = {
   'sys_vpn': 'تنظیمات VPN سیستم (Always-on و قطع اینترنت بدون VPN)',
   'sec_note': 'اطلاعات سرورها رمزنگاری‌شده ذخیره می‌شود، پشتیبان‌گیری اندروید غیرفعال است، هیچ پورت محلی باز نمی‌شود و فایل کانفیگ بعد از شروع پاک می‌شود.',
   'apply_next': 'تغییرات از اتصال بعدی اعمال می‌شود',
+  'opt_panel_tuning': 'تنظیمات ضدفیلتر خود سرور (فرگمنت و Mux)',
+  'opt_panel_tuning_sub': 'خاموش = سریع‌تر (پیشنهادی). روشن = برای فیلترینگ شدید، ولی سرعت کمتر می‌شود.',
   'tested': 'تست شد',
   'testing': 'در حال تست...',
   'live_down': 'دانلود',
   'live_up': 'آپلود',
+  'theme': 'تم برنامه',
+  'theme_dark': 'تیره',
+  'theme_light': 'سفید',
+  'theme_system': 'سیستم',
+  'inbox': 'اعلان‌ها',
+  'inbox_empty': 'هنوز پیامی نیست',
+  'new_message': 'پیام جدید',
+  'view': 'مشاهده',
+  'open_link': 'باز کردن لینک',
+  'opt_announce': 'دریافت اعلان‌ها و پیام‌های کانال',
+  'opt_announce_sub': 'اعلان‌ها هنگام باز بودن برنامه یا وصل بودن VPN می‌رسند',
+  'opt_block_quic': 'مسدود کردن QUIC (سرعت و پایداری بیشتر)',
+  'opt_block_quic_sub': 'برنامه‌ها به‌جای QUIC از TCP استفاده می‌کنند که از پروکسی سریع‌تر عبور می‌کند',
+  'mtu_note': 'اگر سرعت یا پایداری مشکل داشت 1400 را امتحان کنید',
+  'paste_add': 'افزودن از کلیپ‌بورد',
+  'tap_details': 'سرورها',
+  'opt_update_every': 'فاصله‌ی به‌روزرسانی ساب',
+  'every_off': 'فقط اولین باز شدن هر روز',
+  'every_30': 'هر ۳۰ دقیقه',
+  'every_60': 'هر ۱ ساعت',
+  'every_180': 'هر ۳ ساعت',
+  'update_every_note': 'ساب همیشه در اولین باز شدن برنامه‌ی هر روز هم به‌روز می‌شود. به‌روزرسانی دوره‌ای فقط وقتی برنامه باز است انجام می‌شود.',
+  'app_update': 'به‌روزرسانی برنامه',
+  'check_update': 'بررسی نسخه‌ی جدید',
+  'update_available': 'نسخه‌ی جدید آماده است',
+  'update_now': 'دانلود و نصب',
+  'update_latest': 'برنامه به‌روز است',
+  'update_checking': 'در حال بررسی...',
+  'update_downloading': 'در حال دانلود...',
+  'update_perm': 'اجازه‌ی نصب برنامه را برای DastRas NG روشن کنید و دوباره «دانلود و نصب» را بزنید',
+  'update_fail': 'دانلود یا بررسی ناموفق بود',
+  'update_signed': 'اگر نصب با خطا مواجه شد، نسخه‌ی قبلی را پاک کنید و دوباره نصب کنید',
+  'version': 'نسخه',
+  'whats_new': 'تغییرات',
+  'later': 'بعداً',
+  'tab_home': 'خانه',
+  'tab_servers': 'سرورها',
+  'tab_apps': 'برنامه‌ها',
+  'tab_inbox': 'پیام‌ها',
+  'tab_settings': 'تنظیمات',
+  'new_tag': 'جدید',
+  'data_usage': 'مصرف اشتراک',
 };
 
 const _en = {
@@ -176,7 +221,7 @@ const _en = {
   'sec_support': 'Support',
   'opt_auto_select': 'Auto-pick the best, most stable server',
   'opt_auto_select_sub': 'Servers are tested before every connection and the best one is chosen',
-  'opt_auto_update': 'Auto-update subscription (on open and every 3 hours)',
+  'opt_auto_update': 'Auto-update subscription',
   'opt_connect_open': 'Connect automatically when the app opens',
   'opt_clipboard': 'Detect copied links automatically',
   'opt_ping_mode': 'Ping display mode',
@@ -194,8 +239,52 @@ const _en = {
   'sys_vpn': 'System VPN settings (Always-on and block without VPN)',
   'sec_note': 'Server data is stored encrypted, Android backups are disabled, no local port is opened, and the config file is deleted after startup.',
   'apply_next': 'Changes apply from the next connection',
+  'opt_panel_tuning': "Server's own anti-filter settings (fragment and Mux)",
+  'opt_panel_tuning_sub': 'Off = faster (recommended). On = for heavy filtering, but slower.',
   'tested': 'Tested',
   'testing': 'Testing...',
   'live_down': 'Download',
   'live_up': 'Upload',
+  'theme': 'App theme',
+  'theme_dark': 'Dark',
+  'theme_light': 'Light',
+  'theme_system': 'System',
+  'inbox': 'Notifications',
+  'inbox_empty': 'No messages yet',
+  'new_message': 'New message',
+  'view': 'View',
+  'open_link': 'Open link',
+  'opt_announce': 'Receive channel news and notifications',
+  'opt_announce_sub': 'Delivered while the app is open or the VPN is connected',
+  'opt_block_quic': 'Block QUIC (better speed and stability)',
+  'opt_block_quic_sub': 'Apps use TCP instead of QUIC, which passes through proxies faster',
+  'mtu_note': 'If speed or stability is poor, try 1400',
+  'paste_add': 'Add from clipboard',
+  'tap_details': 'Servers',
+  'opt_update_every': 'Subscription update interval',
+  'every_off': 'Only on the first open each day',
+  'every_30': 'Every 30 minutes',
+  'every_60': 'Every 1 hour',
+  'every_180': 'Every 3 hours',
+  'update_every_note': 'The subscription is also always updated the first time the app opens each day. Periodic updates run only while the app is open.',
+  'app_update': 'App update',
+  'check_update': 'Check for updates',
+  'update_available': 'A new version is available',
+  'update_now': 'Download and install',
+  'update_latest': 'The app is up to date',
+  'update_checking': 'Checking...',
+  'update_downloading': 'Downloading...',
+  'update_perm': 'Allow DastRas NG to install apps, then tap "Download and install" again',
+  'update_fail': 'Download or check failed',
+  'update_signed': 'If the install fails, uninstall the old version and install again',
+  'version': 'Version',
+  'whats_new': 'What is new',
+  'later': 'Later',
+  'tab_home': 'Home',
+  'tab_servers': 'Servers',
+  'tab_apps': 'Apps',
+  'tab_inbox': 'Inbox',
+  'tab_settings': 'Settings',
+  'new_tag': 'New',
+  'data_usage': 'Subscription usage',
 };

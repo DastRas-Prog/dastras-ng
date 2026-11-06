@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import 'home.dart';
 import 'lang.dart';
+import 'pal.dart';
 import 'theme.dart';
 
 const kAppName = 'DastRas NG';
@@ -31,33 +32,72 @@ Future<void> openTelegram(String user) async {
   await openUrl('https://t.me/$user');
 }
 
+/// Opens t.me links inside Telegram, everything else in the browser.
+Future<void> openAny(String url) async {
+  final m = RegExp(r'^https?://t\.me/([A-Za-z0-9_]+)').firstMatch(url);
+  if (m != null) return openTelegram(m.group(1)!);
+  return openUrl(url);
+}
+
 void main() => runApp(const App());
 
-class App extends StatelessWidget {
+class App extends StatefulWidget {
   const App({super.key});
+  @override
+  State<App> createState() => _AppState();
+}
+
+class _AppState extends State<App> with WidgetsBindingObserver {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangePlatformBrightness() {
+    if (themeN.value == 'system') setState(() {}); // follow the phone's dark/light setting
+  }
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<String>(
-      valueListenable: langN,
-      builder: (context, code, _) => MaterialApp(
-        title: kAppName,
-        debugShowCheckedModeBanner: false,
-        locale: Locale(code),
-        supportedLocales: const [Locale('fa'), Locale('en')],
-        localizationsDelegates: const [
-          GlobalMaterialLocalizations.delegate,
-          GlobalWidgetsLocalizations.delegate,
-          GlobalCupertinoLocalizations.delegate,
-        ],
-        theme: ThemeData(
-          useMaterial3: true,
-          brightness: Brightness.dark,
-          colorSchemeSeed: kAccent,
-          scaffoldBackgroundColor: kBg0,
-        ),
-        home: const Gate(),
-      ),
+    return AnimatedBuilder(
+      animation: Listenable.merge([langN, themeN]),
+      builder: (context, _) {
+        final dark = Pal.dark;
+        SystemChrome.setSystemUIOverlayStyle(
+          dark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark,
+        );
+        return MaterialApp(
+          title: kAppName,
+          debugShowCheckedModeBanner: false,
+          locale: Locale(langN.value),
+          supportedLocales: const [Locale('fa'), Locale('en')],
+          localizationsDelegates: const [
+            GlobalMaterialLocalizations.delegate,
+            GlobalWidgetsLocalizations.delegate,
+            GlobalCupertinoLocalizations.delegate,
+          ],
+          theme: ThemeData(
+            useMaterial3: true,
+            brightness: dark ? Brightness.dark : Brightness.light,
+            colorSchemeSeed: Pal.accent,
+            scaffoldBackgroundColor: Pal.bg0,
+            dialogTheme: DialogThemeData(backgroundColor: Pal.dialog),
+            snackBarTheme: SnackBarThemeData(
+              behavior: SnackBarBehavior.floating,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+            ),
+          ),
+          home: const Gate(),
+        );
+      },
     );
   }
 }
@@ -71,7 +111,6 @@ class Gate extends StatefulWidget {
 
 class _GateState extends State<Gate> {
   int stage = 0; // 0 loading, 1 language, 2 welcome, 3 home
-  bool first = false;
 
   @override
   void initState() {
@@ -81,9 +120,10 @@ class _GateState extends State<Gate> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
+    final th = p.getString('theme');
+    if (th != null) themeN.value = th;
     final saved = p.getString('lang');
     if (saved == null) {
-      first = true;
       setState(() => stage = 1);
     } else {
       langN.value = saved;
@@ -126,30 +166,30 @@ class LanguagePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Backdrop(
-        child: SafeArea(
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(28),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Logo(size: 110),
-                const SizedBox(height: 18),
-                const Text(kAppName, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700)),
-                const SizedBox(height: 36),
-                const Text('انتخاب زبان', style: TextStyle(fontSize: 20)),
-                const SizedBox(height: 4),
-                const Text('Choose your language', style: TextStyle(fontSize: 16, color: Colors.white60)),
-                const SizedBox(height: 24),
-                _LangButton(label: 'فارسی', onTap: () => onPick('fa')),
-                const SizedBox(height: 12),
-                _LangButton(label: 'English', onTap: () => onPick('en')),
-              ]),
+    return Tr((context) => Scaffold(
+          body: Backdrop(
+            child: SafeArea(
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(28),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    const Pop(child: Logo(size: 112)),
+                    const SizedBox(height: 18),
+                    Text(kAppName, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Pal.t1)),
+                    const SizedBox(height: 36),
+                    Text('انتخاب زبان', style: TextStyle(fontSize: 20, color: Pal.t1)),
+                    const SizedBox(height: 4),
+                    Text('Choose your language', style: TextStyle(fontSize: 16, color: Pal.t3)),
+                    const SizedBox(height: 24),
+                    _LangButton(label: 'فارسی', onTap: () => onPick('fa')),
+                    const SizedBox(height: 12),
+                    _LangButton(label: 'English', onTap: () => onPick('en')),
+                  ]),
+                ),
+              ),
             ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 }
 
@@ -165,12 +205,12 @@ class _LangButton extends StatelessWidget {
       height: 56,
       child: OutlinedButton(
         style: OutlinedButton.styleFrom(
-          backgroundColor: kGlass,
-          side: const BorderSide(color: kGlassBorder),
+          backgroundColor: Pal.card,
+          side: BorderSide(color: Pal.cardBorder),
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         ),
         onPressed: onTap,
-        child: Text(label, style: const TextStyle(fontSize: 20, color: Colors.white)),
+        child: Text(label, style: TextStyle(fontSize: 20, color: Pal.t1)),
       ),
     );
   }
@@ -189,29 +229,24 @@ class WelcomePage extends StatelessWidget {
                 child: Padding(
                   padding: const EdgeInsets.all(28),
                   child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    const Logo(size: 120),
+                    const Pop(child: Logo(size: 120)),
                     const SizedBox(height: 18),
-                    const Text(kAppName, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700)),
+                    Text(kAppName, style: TextStyle(fontSize: 30, fontWeight: FontWeight.w700, color: Pal.t1)),
                     const SizedBox(height: 30),
-                    Text(tr('welcome_title'), style: const TextStyle(fontSize: 22, fontWeight: FontWeight.w600)),
+                    Text(tr('welcome_title'), style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: Pal.t1)),
                     const SizedBox(height: 8),
                     Text(tr('welcome_sub'),
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(fontSize: 15, color: Colors.white60)),
+                        textAlign: TextAlign.center, style: TextStyle(fontSize: 15, color: Pal.t3)),
                     const SizedBox(height: 22),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: kGlass,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: kGlassBorder),
-                      ),
+                    Glass(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                       child: Row(mainAxisSize: MainAxisSize.min, children: [
-                        const Icon(Icons.send_rounded, color: kCyan),
+                        Icon(Icons.send_rounded, color: Pal.cyan),
                         const SizedBox(width: 12),
-                        const Directionality(
+                        Directionality(
                           textDirection: TextDirection.ltr,
-                          child: Text(kChannelText, style: TextStyle(fontSize: 20, letterSpacing: 0.5)),
+                          child: Text(kChannelText,
+                              style: TextStyle(fontSize: 20, letterSpacing: 0.5, color: Pal.t1)),
                         ),
                         const SizedBox(width: 8),
                         IconButton(
