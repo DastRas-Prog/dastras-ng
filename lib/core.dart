@@ -80,6 +80,11 @@ class Core {
   static Future<String> installApk(String path) async =>
       (await _ch.invokeMethod<String>('installApk', path)) ?? 'error';
 
+  static Future<void> share(String text) => _ch.invokeMethod('share', text);
+
+  static Future<void> notify(String title, String body, {int id = 3000}) =>
+      _ch.invokeMethod('notify', {'title': title, 'body': body, 'id': id});
+
   static Future<void> vpnSettings() => _ch.invokeMethod('vpnSettings');
 
   static Future<List<AppInfo>> apps() async {

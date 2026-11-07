@@ -24,18 +24,8 @@ class XrayVpnService : VpnService(), DialerController {
         private const val CHANNEL_ID = "dastras_vpn"
         private const val NOTIF_ID = 1
 
-        // stopped | starting | running | error:<message>
-        @Volatile
-        var state: String = "stopped"
-
-        // live traffic (bytes/s and session totals), read by MainActivity
-        @Volatile var down = 0L
-        @Volatile var up = 0L
-        @Volatile var totDown = 0L
-        @Volatile var totUp = 0L
-
-        // the running service, so the app can stop it directly
-        @Volatile var instance: XrayVpnService? = null
+        // bumped on every start so a late "kill the process" from an old stop never hits a new session
+        @Volatile var generation = 0
     }
 
     private val lock = Any()
@@ -46,21 +36,27 @@ class XrayVpnService : VpnService(), DialerController {
     @Volatile private var monitoring = false
     @Volatile private var closed = false
     @Volatile private var xrayRunning = false
+    @Volatile private var curState = "stopped" // stopped | starting | running | error:<message>
+    @Volatile private var down = 0L
+    @Volatile private var up = 0L
+    @Volatile private var totDown = 0L
+    @Volatile private var totUp = 0L
     private var lang = "fa"
+
+    private fun setState(s: String) {
+        curState = s
+        VpnState.write(this, s, down, up, totDown, totUp)
+    }
 
     // Called by libXray for every outbound socket so it bypasses the VPN.
     override fun protectFd(fd: Long): Boolean = protect(fd.toInt())
-
-    override fun onCreate() {
-        super.onCreate()
-        instance = this
-    }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         if (intent?.action == ACTION_STOP) {
             requestStop(false)
             return START_NOT_STICKY
         }
+        generation++
         closed = false
         // read language early so the very first notification is localized
         try {
@@ -68,7 +64,7 @@ class XrayVpnService : VpnService(), DialerController {
         } catch (_: Exception) {
         }
         showForeground()
-        state = "starting"
+        setState("starting")
         Thread { startCore() }.start()
         return START_NOT_STICKY
     }
@@ -197,11 +193,11 @@ class XrayVpnService : VpnService(), DialerController {
                 shutdown(false)
                 return
             }
-            state = "running"
+            setState("running")
             startMonitor()
             startAnnouncements()
         } catch (t: Throwable) {
-            state = "error:" + (t.message ?: t.javaClass.simpleName)
+            setState("error:" + (t.message ?: t.javaClass.simpleName))
             shutdown(true)
         }
     }
@@ -226,16 +222,18 @@ class XrayVpnService : VpnService(), DialerController {
                 }
                 val rx = TrafficStats.getUidRxBytes(uid)
                 val tx = TrafficStats.getUidTxBytes(uid)
-                if (rx < 0 || tx < 0) continue
-                val now = SystemClock.elapsedRealtime()
-                val dt = (now - lastT).coerceAtLeast(1) / 1000.0
-                down = ((rx - lastRx) / dt).toLong().coerceAtLeast(0)
-                up = ((tx - lastTx) / dt).toLong().coerceAtLeast(0)
-                totDown = (rx - rx0).coerceAtLeast(0)
-                totUp = (tx - tx0).coerceAtLeast(0)
-                lastRx = rx
-                lastTx = tx
-                lastT = now
+                if (rx >= 0 && tx >= 0) {
+                    val now = SystemClock.elapsedRealtime()
+                    val dt = (now - lastT).coerceAtLeast(1) / 1000.0
+                    down = ((rx - lastRx) / dt).toLong().coerceAtLeast(0)
+                    up = ((tx - lastTx) / dt).toLong().coerceAtLeast(0)
+                    totDown = (rx - rx0).coerceAtLeast(0)
+                    totUp = (tx - tx0).coerceAtLeast(0)
+                    lastRx = rx
+                    lastTx = tx
+                    lastT = now
+                }
+                VpnState.write(this, curState, down, up, totDown, totUp) // heartbeat for the app
                 updateNotification()
             }
         }.also { it.start() }
@@ -296,13 +294,23 @@ class XrayVpnService : VpnService(), DialerController {
             } catch (_: Throwable) {
             }
             tun = null
-            if (!keepState) state = "stopped"
+            if (!keepState) setState("stopped")
         }
         try {
             stopForeground(true)
         } catch (_: Throwable) {
         }
         stopSelf()
+        // This service runs in its own process (:vpn). Ending that process guarantees that every
+        // file descriptor of the tunnel is closed, so the VPN key icon always disappears.
+        val gen = generation
+        Thread {
+            try {
+                Thread.sleep(300)
+            } catch (_: InterruptedException) {
+            }
+            if (gen == generation) android.os.Process.killProcess(android.os.Process.myPid())
+        }.start()
     }
 
     override fun onRevoke() {
@@ -310,7 +318,6 @@ class XrayVpnService : VpnService(), DialerController {
     }
 
     override fun onDestroy() {
-        instance = null
         if (!closed) Thread { shutdown(false) }.start()
         super.onDestroy()
     }
@@ -349,7 +356,7 @@ class XrayVpnService : VpnService(), DialerController {
         )
         @Suppress("DEPRECATION")
         val b = if (Build.VERSION.SDK_INT >= 26) Notification.Builder(this, CHANNEL_ID) else Notification.Builder(this)
-        val running = state == "running"
+        val running = curState == "running"
         val text = if (running) "↓ ${fmtRate(down)}    ↑ ${fmtRate(up)}"
         else (if (fa) "در حال اتصال..." else "Connecting...")
         val sub = if (running) {

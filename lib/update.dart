@@ -11,7 +11,7 @@ import 'theme.dart';
 
 /// Injected by the build (GitHub run number). 0 = local/dev build.
 const int kBuild = int.fromEnvironment('BUILD_NUMBER', defaultValue: 0);
-const String kVersion = '1.6.0';
+const String kVersion = '1.7.0';
 const String kRepo = 'mojyrayzor-prog/dastras-ng';
 
 class UpdateInfo {
@@ -24,7 +24,7 @@ String _apkName(String abi) {
   if (abi.contains('arm64')) return 'app-arm64-v8a-release.apk';
   if (abi.contains('armeabi') || abi.contains('v7')) return 'app-armeabi-v7a-release.apk';
   if (abi.contains('x86_64')) return 'app-x86_64-release.apk';
-  return 'app-arm64-v8a-release.apk';
+  return 'app-universal-release.apk';
 }
 
 int _buildOf(String tag) => int.tryParse(tag.replaceAll(RegExp(r'[^0-9]'), '')) ?? 0;
@@ -42,10 +42,12 @@ Future<UpdateInfo?> fetchLatest() async {
       final j = jsonDecode(r.body) as Map;
       final tag = (j['tag_name'] ?? '').toString();
       String? url;
+      String? uni;
       for (final a in (j['assets'] as List? ?? const [])) {
         if (a is Map && a['name'] == apk) url = a['browser_download_url']?.toString();
+        if (a is Map && a['name'] == 'app-universal-release.apk') uni = a['browser_download_url']?.toString();
       }
-      url ??= 'https://github.com/$kRepo/releases/download/$tag/$apk';
+      url ??= uni ?? 'https://github.com/$kRepo/releases/download/$tag/$apk';
       if (tag.isNotEmpty) return UpdateInfo(_buildOf(tag), tag, (j['body'] ?? '').toString(), url);
     }
   } catch (_) {}

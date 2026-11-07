@@ -9,8 +9,9 @@ import 'apps_page.dart';
 import 'config.dart';
 import 'core.dart';
 import 'inbox_page.dart';
+import 'jalali.dart';
 import 'lang.dart';
-import 'main.dart' show kAppName, kChannelUser, openTelegram;
+import 'main.dart' show kAppName, kChannelUser, kSupportUser, openTelegram, openTelegramText;
 import 'models.dart';
 import 'pal.dart';
 import 'service.dart';
@@ -31,7 +32,7 @@ String fmtBytes(int b) {
 
 String fmtRate(int b) => '${fmtBytes(b)}/s';
 String two(int n) => n.toString().padLeft(2, '0');
-String fmtDate(DateTime d) => '${d.year}-${two(d.month)}-${two(d.day)}';
+String fmtDate(DateTime d) => formatDate(d);
 
 Color pingColor(int? d) {
   if (d == null) return Pal.t4;
@@ -113,6 +114,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     setState(() => ready = true);
     timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkClipboard();
+    _checkWarn();
     if (_newDay) {
       _refreshSubs(silent: true);
     } else {
@@ -169,7 +171,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   int get _unread {
     final items = parseAnnouncements(store.annJson);
-    return items.where((a) => a.id > store.annRead).length;
+    return items.where((a) => !store.annDeleted.contains(a.id) && !store.annReadIds.contains(a.id)).length;
   }
 
   Future<void> _checkAnn() async {
@@ -187,9 +189,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         return;
       }
       if (store.annRead == -1) {
-        store.annRead = items.first.id; // first run: do not flood the user with old messages
+        store.annRead = 0; // first run: old messages count as read, do not flood the user
+        store.annReadIds.addAll(items.map((a) => a.id));
       } else {
-        final fresh = items.where((a) => a.id > store.annRead).toList();
+        final fresh = items.where((a) => !store.annDeleted.contains(a.id) && !store.annReadIds.contains(a.id)).toList();
         if (fresh.isNotEmpty && mounted) annCand = fresh.first;
       }
       await store.save();
@@ -199,7 +202,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Future<void> _markAllRead() async {
     final items = parseAnnouncements(store.annJson);
-    if (items.isNotEmpty) store.annRead = items.first.id;
+    for (final a in items) {
+      if (!store.annDeleted.contains(a.id)) store.annReadIds.add(a.id);
+    }
     annCand = null;
     await store.save();
     if (mounted) setState(() {});
@@ -431,6 +436,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       if (title != null) store.subTitle = title;
       store.updatedMs = DateTime.now().millisecondsSinceEpoch;
       await store.save();
+      _checkWarn();
       if (!silent) _toast('${tr('sub_updated')} (${all.length} ${tr('configs_n')})');
     } catch (e) {
       if (!silent) _toast('${tr('error')}: $e');
@@ -521,7 +527,18 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             Text(n.subtitle, style: TextStyle(color: Pal.t2)),
             if (n.address.isNotEmpty) ...[
               const SizedBox(height: 4),
-              Directionality(textDirection: TextDirection.ltr, child: Text(n.address, style: TextStyle(color: Pal.t2))),
+              Row(children: [
+                Directionality(textDirection: TextDirection.ltr, child: Text(n.address, style: TextStyle(color: Pal.t2))),
+                IconButton(
+                  visualDensity: VisualDensity.compact,
+                  tooltip: tr('copy_address'),
+                  icon: Icon(Icons.copy_rounded, size: 18, color: Pal.cyan),
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: n.address));
+                    _toast(tr('copied'));
+                  },
+                ),
+              ]),
             ],
             if (n.tcp != null || n.real != null) ...[
               const SizedBox(height: 8),
@@ -549,6 +566,157 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               ),
             ),
           ]),
+        ),
+      ),
+    );
+  }
+
+  // ---------- account warning (low data / about to expire) ----------
+
+  String _today() {
+    final n = DateTime.now();
+    return '${n.year}-${n.month}-${n.day}';
+  }
+
+  String? get _warnText {
+    final i = store.info;
+    if (i == null) return null;
+    final parts = <String>[];
+    if (i.total > 0) {
+      final left = i.total - i.used;
+      if (left <= 2 * 1024 * 1024 * 1024) {
+        parts.add(left <= 0 ? tr('warn_data_over') : '${tr('warn_data_left')}: ${fmtBytes(left)}');
+      }
+    }
+    if (i.expire > 0) {
+      final secs = i.expire - DateTime.now().millisecondsSinceEpoch ~/ 1000;
+      if (secs <= 2 * 86400) {
+        parts.add(secs <= 0 ? tr('warn_expired') : '${tr('warn_days_left')}: ${(secs / 86400).ceil()} ${tr('days')}');
+      }
+    }
+    return parts.isEmpty ? null : parts.join(' • ');
+  }
+
+  bool get _warnVisible => _warnText != null && store.warnDismissDay != _today();
+
+  static const _supportMsg = 'درود وقت بخیر، اکانت من داره تموم میشه لطفا اکانت منو شارژ کنید.';
+
+  /// Opens the support chat in Telegram with the recharge message ready (also copied).
+  Future<void> _contactSupport() async {
+    await Clipboard.setData(const ClipboardData(text: _supportMsg));
+    _toast(tr('support_msg_copied'));
+    await openTelegramText(kSupportUser, _supportMsg);
+  }
+
+  /// At most one system notification per day.
+  Future<void> _checkWarn() async {
+    final w = _warnText;
+    if (w == null || store.warnedDay == _today()) return;
+    store.warnedDay = _today();
+    await store.save();
+    try {
+      await Core.notify(tr('warn_title'), '$w\n${tr('warn_notify_body')}', id: 3001);
+    } catch (_) {}
+    if (mounted) setState(() {});
+  }
+
+  Widget _warnBanner() => _banner(
+        icon: Icons.warning_amber_rounded,
+        tint: Pal.orange,
+        text: '${tr('warn_title')}: ${_warnText ?? ''}',
+        action: tr('warn_charge'),
+        onAction: _contactSupport,
+        onClose: () async {
+          store.warnDismissDay = _today();
+          await store.save();
+          if (mounted) setState(() {});
+        },
+      );
+
+  /// Automatic = best server is picked for you; Manual = you choose from the server list.
+  Widget _modeToggle() {
+    return SizedBox(
+      width: 300,
+      child: SegmentedButton<bool>(
+        showSelectedIcon: false,
+        segments: [
+          ButtonSegment(value: true, icon: const Icon(Icons.auto_awesome_rounded, size: 18), label: Text(tr('mode_auto'))),
+          ButtonSegment(value: false, icon: const Icon(Icons.touch_app_rounded, size: 18), label: Text(tr('mode_manual'))),
+        ],
+        selected: {store.autoSelect},
+        onSelectionChanged: (v) async {
+          HapticFeedback.selectionClick();
+          store.autoSelect = v.first;
+          await store.save();
+          if (mounted) setState(() {});
+          if (!v.first) _goTab(1); // manual: pick the server yourself
+        },
+      ),
+    );
+  }
+
+  void _linksSheet() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Pal.dialog,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(26))),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, set) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(tr('sub_links'), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: Pal.t1)),
+              const SizedBox(height: 12),
+              if (store.subs.isEmpty)
+                Padding(padding: const EdgeInsets.all(12), child: Text(tr('no_links'), style: TextStyle(color: Pal.t3))),
+              for (final url in List<String>.from(store.subs))
+                Container(
+                  margin: const EdgeInsets.only(bottom: 10),
+                  padding: const EdgeInsets.fromLTRB(12, 10, 6, 4),
+                  decoration: BoxDecoration(
+                    color: Pal.card,
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: Pal.cardBorder),
+                  ),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Directionality(
+                      textDirection: TextDirection.ltr,
+                      child: SelectableText(url, maxLines: 3, style: TextStyle(fontSize: 13, color: Pal.t2)),
+                    ),
+                    Row(children: [
+                      TextButton.icon(
+                        onPressed: () async {
+                          await Clipboard.setData(ClipboardData(text: url));
+                          _toast(tr('copied'));
+                        },
+                        icon: const Icon(Icons.copy_rounded, size: 18),
+                        label: Text(tr('copy')),
+                      ),
+                      TextButton.icon(
+                        onPressed: () => Core.share(url),
+                        icon: const Icon(Icons.share_rounded, size: 18),
+                        label: Text(tr('share')),
+                      ),
+                      const Spacer(),
+                      IconButton(
+                        tooltip: tr('delete'),
+                        onPressed: () async {
+                          store.subs.remove(url);
+                          store.nodes.removeWhere((n) => n.src == 'sub');
+                          if (store.selected >= store.nodes.length) store.selected = 0;
+                          await store.save();
+                          set(() {});
+                          if (mounted) setState(() {});
+                          if (store.subs.isNotEmpty) _refreshSubs(silent: true);
+                        },
+                        icon: Icon(Icons.delete_outline_rounded, color: Pal.red),
+                      ),
+                    ]),
+                  ]),
+                ),
+            ]),
+          ),
         ),
       ),
     );
@@ -630,11 +798,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (i == tab) return;
     HapticFeedback.selectionClick();
     final prev = tab;
-    if (i == 3) {
-      _inboxMark = store.annRead;
-      _markAllRead();
-    }
     setState(() => tab = i);
+    if (prev == 3) _markAllRead(); // everything shown in the inbox counts as read once you leave it
     if (prev == 4) _maybeRefresh();
   }
 
@@ -678,7 +843,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           if (mounted) setState(() {});
         });
       case 3:
-        return InboxPage(store: store, embedded: true, newerThan: _inboxMark);
+        return InboxPage(store: store, embedded: true, onChanged: () {
+          if (mounted) setState(() {});
+        });
       case 4:
         return SettingsPage(store: store, embedded: true);
       default:
@@ -789,6 +956,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final labelColor = running ? Pal.green : (starting || busyPhase ? Pal.orange : Pal.t2);
     return Column(children: [
       _topBar(),
+      if (_warnVisible) _warnBanner(),
       if (updCand != null) _updBanner(),
       if (annCand != null) _annBanner(),
       if (clipCand != null) _clipBanner(),
@@ -840,7 +1008,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             ),
           ),
         ),
-      const SizedBox(height: 14),
+      const SizedBox(height: 12),
+      _modeToggle(),
+      const SizedBox(height: 12),
       if (running) _speedCard(),
       if (running) const SizedBox(height: 10),
       _serverCard(),
@@ -980,6 +1150,14 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             child: Text('${fmtBytes(i.used)} / ${total > 0 ? fmtBytes(total) : '∞'}',
                 style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: Pal.t1)),
           ),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: TextButton.icon(
+              onPressed: _contactSupport,
+              icon: const Icon(Icons.support_agent_rounded, size: 18),
+              label: Text(tr('warn_charge')),
+            ),
+          ),
         ]),
       ),
     );
@@ -988,7 +1166,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   // ----- tab 1: servers / subscription -----
 
   Widget _tabServers() {
-    return CustomScrollView(slivers: [
+    return RefreshIndicator(
+      onRefresh: () => _refreshSubs(),
+      child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: [
       SliverToBoxAdapter(
         child: Column(children: [
           const SizedBox(height: 10),
@@ -1002,20 +1182,20 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       else
         SliverList.builder(itemCount: store.nodes.length, itemBuilder: (_, i) => _nodeCard(i)),
       const SliverToBoxAdapter(child: SizedBox(height: 110)),
-    ]);
+    ]));
   }
 
-  Widget _banner({required IconData icon, required String text, required String action, required VoidCallback onAction, required VoidCallback onClose}) {
+  Widget _banner({required IconData icon, required String text, required String action, required VoidCallback onAction, required VoidCallback onClose, Color? tint}) {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 6, 16, 0),
       padding: const EdgeInsets.fromLTRB(14, 6, 6, 6),
       decoration: BoxDecoration(
-        color: Pal.accent.withValues(alpha: 0.14),
+        color: (tint ?? Pal.accent).withValues(alpha: 0.14),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(color: Pal.cardBorder),
       ),
       child: Row(children: [
-        Icon(icon, color: Pal.cyan),
+        Icon(icon, color: tint ?? Pal.cyan),
         const SizedBox(width: 10),
         Expanded(
           child: Text(text, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, color: Pal.t1)),
@@ -1032,10 +1212,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       icon: Icons.campaign_rounded,
       text: a.title.isEmpty ? tr('new_message') : a.title,
       action: tr('view'),
-      onAction: () async {
+      onAction: () {
         setState(() => annCand = null);
-        await Navigator.push(context, MaterialPageRoute(builder: (_) => InboxPage(store: store)));
-        await _markAllRead();
+        _goTab(3);
       },
       onClose: _markAllRead,
     );
@@ -1121,7 +1300,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             if (upd != null)
               Directionality(
                 textDirection: TextDirection.ltr,
-                child: Text('${fmtDate(upd)} ${two(upd.hour)}:${two(upd.minute)}',
+                child: Text(formatDateTime(upd),
                     style: TextStyle(fontSize: 12, color: Pal.t4)),
               ),
           ]),
@@ -1140,7 +1319,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         PopupMenuButton<String>(
           icon: Icon(Icons.more_horiz_rounded, color: Pal.cyan),
           onSelected: (v) async {
-            if (v == 'clear') {
+            if (v == 'links') {
+              _linksSheet();
+            } else if (v == 'clear') {
               store.nodes = [];
               store.subs = [];
               store.selected = 0;
@@ -1151,7 +1332,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               if (mounted) setState(() {});
             }
           },
-          itemBuilder: (_) => [PopupMenuItem(value: 'clear', child: Text(tr('delete_all')))],
+          itemBuilder: (_) => [
+            PopupMenuItem(value: 'links', child: Text(tr('sub_links'))),
+            PopupMenuItem(value: 'clear', child: Text(tr('delete_all'))),
+          ],
         ),
       ]),
     );

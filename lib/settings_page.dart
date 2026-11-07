@@ -264,6 +264,32 @@ class _SettingsPageState extends State<SettingsPage> {
                         onTap: () => openTelegram(kChannelUser),
                       ),
                       ListTile(
+                        leading: Icon(Icons.share_rounded, color: Pal.cyan),
+                        title: Text(tr('share_app')),
+                        onTap: () => Core.share('$kAppName\nhttps://t.me/$kChannelUser'),
+                      ),
+                      ListTile(
+                        leading: Icon(Icons.restart_alt_rounded, color: Pal.cyan),
+                        title: Text(tr('reset_defaults')),
+                        onTap: () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              content: Text(tr('reset_confirm')),
+                              actions: [
+                                TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(tr('cancel'))),
+                                FilledButton(onPressed: () => Navigator.pop(ctx, true), child: Text(tr('ok'))),
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            s.resetSettings();
+                            await s.save();
+                            if (mounted) setState(() {});
+                          }
+                        },
+                      ),
+                      ListTile(
                         leading: Icon(Icons.info_outline_rounded, color: Pal.cyan),
                         title: Text(tr('about')),
                         subtitle: Text(tr('about_text')),

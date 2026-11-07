@@ -79,13 +79,13 @@ class MainActivity : FlutterActivity() {
                         }
                     }
                     "stop" -> {
-                        val svc = XrayVpnService.instance
-                        if (svc != null) {
-                            svc.requestStop(false)
+                        val st = VpnState.read(this).state
+                        if (st == "running" || st == "starting") {
+                            VpnState.write(this, "stopping")
+                            startService(Intent(this, XrayVpnService::class.java).setAction(XrayVpnService.ACTION_STOP))
                         } else {
-                            // service already gone: make sure nothing is left running
                             stopService(Intent(this, XrayVpnService::class.java))
-                            XrayVpnService.state = "stopped"
+                            VpnState.write(this, "stopped")
                         }
                         result.success("ok")
                     }
@@ -112,10 +112,24 @@ class MainActivity : FlutterActivity() {
                             result.success("error:" + (t.message ?: "install"))
                         }
                     }
-                    "status" -> result.success(XrayVpnService.state)
-                    "stats" -> result.success(
-                        "${XrayVpnService.down},${XrayVpnService.up},${XrayVpnService.totDown},${XrayVpnService.totUp}"
-                    )
+                    "status" -> result.success(VpnState.read(this).state)
+                    "stats" -> {
+                        val v = VpnState.read(this)
+                        result.success("${v.down},${v.up},${v.totDown},${v.totUp}")
+                    }
+                    "share" -> {
+                        try {
+                            val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, call.arguments as String)
+                            startActivity(Intent.createChooser(send, null))
+                        } catch (_: Throwable) {
+                        }
+                        result.success("ok")
+                    }
+                    "notify" -> {
+                        val a = call.arguments as Map<*, *>
+                        Announcer.show(this, (a["id"] as? Int) ?: 3000, (a["title"] as? String) ?: "DastRas NG", (a["body"] as? String) ?: "")
+                        result.success("ok")
+                    }
                     "announce" -> {
                         val a = call.arguments as Map<*, *>
                         val urls = (a["urls"] as? List<*>)?.map { it.toString() } ?: emptyList()
@@ -177,7 +191,7 @@ class MainActivity : FlutterActivity() {
     }
 
     private fun launchService() {
-        XrayVpnService.state = "starting"
+        VpnState.write(this, "starting")
         ContextCompat.startForegroundService(
             this,
             Intent(this, XrayVpnService::class.java).setAction(XrayVpnService.ACTION_START)

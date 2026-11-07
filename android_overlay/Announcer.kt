@@ -10,12 +10,30 @@ import android.content.pm.PackageManager
 import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
 /** Fetches the customers' announcements (a small JSON file) and shows new ones as notifications. */
 object Announcer {
     private const val CHANNEL = "dastras_news"
+
+    // plain file instead of SharedPreferences: the app and the :vpn process both use it
+    private fun seenFile(ctx: Context) = File(ctx.filesDir, "ann_seen.txt")
+
+    private fun getSeen(ctx: Context): Int =
+        try {
+            seenFile(ctx).readText().trim().toInt()
+        } catch (_: Exception) {
+            -1
+        }
+
+    private fun putSeen(ctx: Context, v: Int) {
+        try {
+            seenFile(ctx).writeText(v.toString())
+        } catch (_: Exception) {
+        }
+    }
 
     private fun fetch(urls: List<String>): String? {
         for (u in urls) {
@@ -41,8 +59,7 @@ object Announcer {
         val raw = fetch(urls) ?: return null
         try {
             val arr = JSONArray(raw)
-            val prefs = ctx.getSharedPreferences("ann", Context.MODE_PRIVATE)
-            val seen = prefs.getInt("seen", -1)
+            val seen = getSeen(ctx)
             var max = seen
             val fresh = ArrayList<JSONObject>()
             for (i in 0 until arr.length()) {
@@ -53,20 +70,23 @@ object Announcer {
             }
             if (seen == -1) {
                 // first run: remember the current state, do not flood the user with old messages
-                prefs.edit().putInt("seen", max.coerceAtLeast(0)).apply()
+                putSeen(ctx, max.coerceAtLeast(0))
                 return raw
             }
             if (post) {
                 fresh.sortBy { it.optInt("id") }
-                for (o in fresh.takeLast(3)) notify(ctx, o)
+                for (o in fresh.takeLast(3)) {
+                    show(ctx, 2000 + o.optInt("id"), o.optString("title").ifEmpty { "DastRas NG" }, o.optString("body"))
+                }
             }
-            if (max > seen) prefs.edit().putInt("seen", max).apply()
+            if (max > seen) putSeen(ctx, max)
         } catch (_: Exception) {
         }
         return raw
     }
 
-    private fun notify(ctx: Context, o: JSONObject) {
+    /** Posts a normal (dismissible) notification. */
+    fun show(ctx: Context, id: Int, title: String, body: String) {
         if (Build.VERSION.SDK_INT >= 33 &&
             ctx.checkSelfPermission("android.permission.POST_NOTIFICATIONS") != PackageManager.PERMISSION_GRANTED
         ) return
@@ -74,8 +94,6 @@ object Announcer {
         if (Build.VERSION.SDK_INT >= 26) {
             nm.createNotificationChannel(NotificationChannel(CHANNEL, "DastRas", NotificationManager.IMPORTANCE_DEFAULT))
         }
-        val title = o.optString("title").ifEmpty { "DastRas NG" }
-        val body = o.optString("body")
         val open = PendingIntent.getActivity(
             ctx, 0, Intent(ctx, MainActivity::class.java),
             PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
@@ -88,6 +106,6 @@ object Announcer {
             .setSmallIcon(android.R.drawable.stat_notify_chat)
             .setContentIntent(open)
             .setAutoCancel(true)
-        nm.notify(2000 + o.optInt("id"), b.build())
+        nm.notify(id, b.build())
     }
 }

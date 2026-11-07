@@ -138,11 +138,37 @@ class Store {
   bool mux = false;
   bool blockAds = false;
   bool announceOn = true;
-  int annRead = -1; // highest announcement id the user has seen
+  int annRead = -1; // -1 = announcements never initialised yet
+  Set<int> annReadIds = {};
+  Set<int> annDeleted = {};
+  String warnedDay = '';
+  String warnDismissDay = '';
   String annJson = '[]';
   bool blockQuic = true; // QUIC (UDP 443) is slow through proxies; apps fall back to TCP
   int mtu = 1500;
   bool panelTuning = false; // use the panel's own fragment/mux (slower, for strict filtering)
+
+  /// Back to the recommended defaults (servers, subscriptions and per-app choices are kept).
+  void resetSettings() {
+    bypassIran = true;
+    autoSelect = true;
+    autoUpdate = true;
+    updateEveryMin = 180;
+    connectOnOpen = false;
+    clipboardWatch = true;
+    httpsOnly = true;
+    pingMode = 'tcp';
+    testUrl = 'http://connectivitycheck.gstatic.com/generate_204';
+    dns = 'google';
+    ipv6 = false;
+    fragment = false;
+    mux = false;
+    blockAds = false;
+    panelTuning = false;
+    blockQuic = true;
+    mtu = 1500;
+    announceOn = true;
+  }
 
   // Sensitive data (servers, subscription links) goes to the Android Keystore-backed
   // secure storage; falls back to plain prefs only if secure storage is unavailable.
@@ -207,6 +233,10 @@ class Store {
     ipv6 = _p.getBool('ipv6') ?? false;
     announceOn = _p.getBool('announceOn') ?? true;
     annRead = _p.getInt('annRead') ?? -1;
+    annReadIds = (_p.getStringList('annReadIds') ?? <String>[]).map(int.tryParse).whereType<int>().toSet();
+    annDeleted = (_p.getStringList('annDeleted') ?? <String>[]).map(int.tryParse).whereType<int>().toSet();
+    warnedDay = _p.getString('warnedDay') ?? '';
+    warnDismissDay = _p.getString('warnDismissDay') ?? '';
     annJson = _p.getString('annJson') ?? '[]';
     fragment = _p.getBool('fragment') ?? false;
     mux = _p.getBool('mux') ?? false;
@@ -256,6 +286,10 @@ class Store {
     await _p.setInt('mtu', mtu);
     await _p.setBool('announceOn', announceOn);
     await _p.setInt('annRead', annRead);
+    await _p.setStringList('annReadIds', annReadIds.map((e) => '$e').toList());
+    await _p.setStringList('annDeleted', annDeleted.map((e) => '$e').toList());
+    await _p.setString('warnedDay', warnedDay);
+    await _p.setString('warnDismissDay', warnDismissDay);
     await _p.setString('annJson', annJson);
     if (info != null) {
       await _p.setString('subinfo', jsonEncode(info!.toJson()));

@@ -32,6 +32,16 @@ Future<void> openTelegram(String user) async {
   await openUrl('https://t.me/$user');
 }
 
+/// Opens a chat in the Telegram app with the message already typed.
+Future<void> openTelegramText(String user, String text) async {
+  final q = Uri.encodeComponent(text);
+  try {
+    final ok = await launchUrl(Uri.parse('tg://resolve?domain=$user&text=$q'), mode: LaunchMode.externalApplication);
+    if (ok) return;
+  } catch (_) {}
+  await openUrl('https://t.me/$user?text=$q');
+}
+
 /// Opens t.me links inside Telegram, everything else in the browser.
 Future<void> openAny(String url) async {
   final m = RegExp(r'^https?://t\.me/([A-Za-z0-9_]+)').firstMatch(url);
