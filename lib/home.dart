@@ -72,6 +72,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   String? lastShownError;
   String? clipCand;
   Announcement? annCand;
+  ({String type, String plmn}) _net = (type: 'none', plmn: '');
   UpdateInfo? updCand;
   DateTime _lastUpd = DateTime.fromMillisecondsSinceEpoch(0);
   Traffic traffic = Traffic.zero;
@@ -102,6 +103,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && ready) {
+      _detectNet();
       _checkClipboard();
       _checkAnn();
     }
@@ -114,6 +116,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     setState(() => ready = true);
     timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkClipboard();
+    _detectNet();
     _checkWarn();
     if (_newDay) {
       _refreshSubs(silent: true);
@@ -370,9 +373,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
     var cand = <int>[
       for (var i = 0; i < nodes.length; i++)
-        if (nodes[i].stat == null || nodes[i].stat!.ok > 0) i
+        if (!nodes[i].isInfo && (nodes[i].stat == null || nodes[i].stat!.ok > 0)) i
     ];
-    if (cand.isEmpty) cand = List<int>.generate(nodes.length, (i) => i);
+    if (cand.isEmpty) cand = List<int>.generate(nodes.length, (i) => i).where((i) => !nodes[i].isInfo).toList();
+    if (cand.isEmpty) return;
+    // the network decides which server family usually works best (1 = Hamrah-e-Aval, 2 = the rest)
+    await _detectNet();
+    final g = _preferredGroup();
+    if (g.isNotEmpty) {
+      final pref = cand.where((i) => nodes[i].group == g).toList();
+      if (pref.isNotEmpty) cand = pref;
+    }
     cand.sort((a, b) => (nodes[a].stat?.score ?? 5000).compareTo(nodes[b].stat?.score ?? 5000));
     cand = cand.take(5).toList();
 
@@ -568,6 +579,67 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           ]),
         ),
       ),
+    );
+  }
+
+  // ---------- network profile ----------
+
+  Future<void> _detectNet() async {
+    try {
+      final n = await Core.network();
+      if (mounted && (n.type != _net.type || n.plmn != _net.plmn)) setState(() => _net = n);
+      if (!mounted) _net = n;
+    } catch (_) {}
+  }
+
+  /// '1', '2' or '' (no preference).
+  String _preferredGroup() {
+    switch (store.netProfile) {
+      case 'mci':
+        return '1';
+      case 'other':
+        return '2';
+      case 'off':
+        return '';
+    }
+    if (_net.type == 'wifi') return '2'; // home modem / fiber
+    if (_net.type == 'cellular') {
+      if (_net.plmn.isEmpty) return '';
+      return _net.plmn == '43211' ? '1' : '2'; // Hamrah-e-Aval = 1, Irancell / Rightel / others = 2
+    }
+    return '';
+  }
+
+  String _netName() {
+    if (store.netProfile == 'mci') return tr('net_label_mci');
+    if (store.netProfile == 'other') return tr('net_label_other');
+    if (_net.type == 'wifi') return tr('net_label_wifi');
+    if (_net.type == 'cellular') {
+      switch (_net.plmn) {
+        case '43211':
+          return tr('net_label_mci');
+        case '43235':
+          return tr('net_label_irancell');
+        case '43220':
+          return 'Rightel';
+      }
+      return tr('net_label_cell');
+    }
+    return '—';
+  }
+
+  Widget _netChip() {
+    final g = _preferredGroup();
+    if (!store.autoSelect || g.isEmpty) return const SizedBox.shrink();
+    final gg = isFa ? faDigits(g) : g;
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
+        const SizedBox(width: 6),
+        Text('${tr('network_now')}: ${_netName()} · ${tr('prefers')} $gg',
+            style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+      ]),
     );
   }
 
@@ -1010,6 +1082,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         ),
       const SizedBox(height: 12),
       _modeToggle(),
+      _netChip(),
       const SizedBox(height: 12),
       if (running) _speedCard(),
       if (running) const SizedBox(height: 10),
@@ -1434,6 +1507,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Pal.t1)),
                     ),
+                    if (!n.isInfo && _preferredGroup().isNotEmpty && n.group == _preferredGroup())
+                      Padding(
+                        padding: const EdgeInsetsDirectional.only(start: 6),
+                        child: Icon(Icons.star_rounded, size: 16, color: Pal.orange),
+                      ),
                   ]),
                   const SizedBox(height: 2),
                   Text(n.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Pal.t4)),

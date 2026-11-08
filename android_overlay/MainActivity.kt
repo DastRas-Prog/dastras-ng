@@ -117,6 +117,37 @@ class MainActivity : FlutterActivity() {
                         val v = VpnState.read(this)
                         result.success("${v.down},${v.up},${v.totDown},${v.totUp}")
                     }
+                    "network" -> {
+                        var type = "none"
+                        var plmn = ""
+                        try {
+                            val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+                            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+                            if (caps != null) {
+                                type = when {
+                                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
+                                        caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_ETHERNET) -> "wifi"
+                                    caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_CELLULAR) -> "cellular"
+                                    else -> "other"
+                                }
+                            }
+                            if (type == "cellular") {
+                                var tm = getSystemService(TELEPHONY_SERVICE) as android.telephony.TelephonyManager
+                                try {
+                                    // dual SIM: use the SIM that carries mobile data
+                                    val id = android.telephony.SubscriptionManager.getDefaultDataSubscriptionId()
+                                    if (id != android.telephony.SubscriptionManager.INVALID_SUBSCRIPTION_ID) {
+                                        tm = tm.createForSubscriptionId(id)
+                                    }
+                                } catch (_: Throwable) {
+                                }
+                                plmn = tm.networkOperator ?: ""
+                                if (plmn.isEmpty()) plmn = tm.simOperator ?: ""
+                            }
+                        } catch (_: Throwable) {
+                        }
+                        result.success("$type|$plmn")
+                    }
                     "share" -> {
                         try {
                             val send = Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, call.arguments as String)

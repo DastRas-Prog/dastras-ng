@@ -39,6 +39,26 @@ class Node {
 
   String get name => (ob['tag'] ?? ob['protocol'] ?? 'node').toString();
   String get key => '$name|$address';
+
+  /// 1 or 2 from the name's trailing number ("UK 1", "IT 2"); falls back to the protocol (trojan = 1, vless = 2).
+  String get group {
+    final m = RegExp(r'(\d+)\s*$').firstMatch(name.trim());
+    if (m != null) {
+      final n = int.parse(m.group(1)!);
+      if (n == 1 || n == 2) return '$n';
+    }
+    final p = (ob['protocol'] ?? '').toString();
+    if (p == 'trojan') return '1';
+    if (p == 'vless') return '2';
+    return '';
+  }
+
+  /// Panels add fake "servers" that only show the account (user name, days left...). Never auto-select them.
+  bool get isInfo {
+    if (RegExp(r'(user\s*:|days?\s*left|data\s*left|expire|volume|used\s*:)', caseSensitive: false).hasMatch(name)) return true;
+    final h = endpoint?.$1 ?? '';
+    return h == '127.0.0.1' || h == '0.0.0.0' || h == 'localhost';
+  }
   String get protocol => (ob['protocol'] ?? '').toString().toUpperCase();
 
   Map<String, dynamic> get _stream =>
@@ -138,6 +158,7 @@ class Store {
   bool mux = false;
   bool blockAds = false;
   bool announceOn = true;
+  String netProfile = 'auto'; // auto | mci | other | off
   int annRead = -1; // -1 = announcements never initialised yet
   Set<int> annReadIds = {};
   Set<int> annDeleted = {};
@@ -168,6 +189,7 @@ class Store {
     blockQuic = true;
     mtu = 1500;
     announceOn = true;
+    netProfile = 'auto';
   }
 
   // Sensitive data (servers, subscription links) goes to the Android Keystore-backed
@@ -232,6 +254,7 @@ class Store {
     dns = _p.getString('dns') ?? 'google';
     ipv6 = _p.getBool('ipv6') ?? false;
     announceOn = _p.getBool('announceOn') ?? true;
+    netProfile = _p.getString('netProfile') ?? 'auto';
     annRead = _p.getInt('annRead') ?? -1;
     annReadIds = (_p.getStringList('annReadIds') ?? <String>[]).map(int.tryParse).whereType<int>().toSet();
     annDeleted = (_p.getStringList('annDeleted') ?? <String>[]).map(int.tryParse).whereType<int>().toSet();
@@ -285,6 +308,7 @@ class Store {
     await _p.setBool('blockQuic', blockQuic);
     await _p.setInt('mtu', mtu);
     await _p.setBool('announceOn', announceOn);
+    await _p.setString('netProfile', netProfile);
     await _p.setInt('annRead', annRead);
     await _p.setStringList('annReadIds', annReadIds.map((e) => '$e').toList());
     await _p.setStringList('annDeleted', annDeleted.map((e) => '$e').toList());

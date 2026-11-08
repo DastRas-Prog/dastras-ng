@@ -126,6 +126,24 @@ class _SettingsPageState extends State<SettingsPage> {
                     _section(tr('sec_auto'), [
                       _switch(tr('opt_auto_select'), s.autoSelect, (v) => s.autoSelect = v,
                           sub: tr('opt_auto_select_sub'), icon: Icons.auto_awesome_rounded),
+                      ListTile(
+                        leading: Icon(Icons.network_cell_rounded, color: Pal.cyan),
+                        title: Text(tr('opt_net_profile')),
+                        trailing: DropdownButton<String>(
+                          value: const ['auto', 'mci', 'other', 'off'].contains(s.netProfile) ? s.netProfile : 'auto',
+                          underline: const SizedBox(),
+                          items: [
+                            DropdownMenuItem(value: 'auto', child: Text(tr('net_auto'))),
+                            DropdownMenuItem(value: 'mci', child: Text(tr('net_mci'))),
+                            DropdownMenuItem(value: 'other', child: Text(tr('net_other'))),
+                            DropdownMenuItem(value: 'off', child: Text(tr('net_off'))),
+                          ],
+                          onChanged: (v) {
+                            if (v != null) _set(() => s.netProfile = v);
+                          },
+                        ),
+                      ),
+                      _note(tr('net_note')),
                       _switch(tr('opt_auto_update'), s.autoUpdate, (v) => s.autoUpdate = v, icon: Icons.sync_rounded),
                       ListTile(
                         leading: Icon(Icons.schedule_rounded, color: Pal.cyan),
