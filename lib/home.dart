@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'dart:convert';
+import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' show FontFeature, ImageFilter;
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import 'config.dart';
 import 'core.dart';
 import 'inbox_page.dart';
 import 'jalali.dart';
+import 'qr_pages.dart';
 import 'lang.dart';
 import 'main.dart' show kAppName, kChannelUser, kSupportUser, openTelegram, openTelegramText;
 import 'models.dart';
@@ -72,7 +75,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   String? lastShownError;
   String? clipCand;
   Announcement? annCand;
-  ({String type, String plmn}) _net = (type: 'none', plmn: '');
   UpdateInfo? updCand;
   DateTime _lastUpd = DateTime.fromMillisecondsSinceEpoch(0);
   Traffic traffic = Traffic.zero;
@@ -103,7 +105,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && ready) {
-      _detectNet();
       _checkClipboard();
       _checkAnn();
     }
@@ -116,7 +117,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     setState(() => ready = true);
     timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkClipboard();
-    _detectNet();
     _checkWarn();
     if (_newDay) {
       _refreshSubs(silent: true);
@@ -154,13 +154,40 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   // ---------- app update (new release on GitHub) ----------
 
+  /// Puts a "new version" message in the inbox (once per version) and posts one notification.
+  Future<void> _addUpdateMessage(UpdateInfo u) async {
+    final id = 1000000 + u.build;
+    if (store.annDeleted.contains(id)) return;
+    final list = (jsonDecode(store.sysJson) as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+    if (list.any((m) => m['id'] == id)) return;
+    list.insert(0, {
+      'id': id,
+      'title': tr('update_available'),
+      'body': '${tr('version')} ${u.tag}${u.notes.trim().isEmpty ? '' : '\n${u.notes.trim()}'}',
+      'url': kUpdateUrl,
+      'date': formatDate(DateTime.now()),
+    });
+    store.sysJson = jsonEncode(list.take(10).toList());
+    if (store.updNotified < u.build) {
+      store.updNotified = u.build;
+      try {
+        await Core.notify(tr('update_available'), '${tr('version')} ${u.tag}', id: 3002);
+      } catch (_) {}
+    }
+    await store.save();
+    if (mounted) setState(() {});
+  }
+
   Future<void> _checkAppUpdate() async {
     if (kBuild == 0) return; // local dev build
     if (DateTime.now().difference(_lastUpd).inHours < 6) return;
     _lastUpd = DateTime.now();
     try {
       final u = await checkUpdate();
-      if (u != null && mounted) setState(() => updCand = u);
+      if (u != null && mounted) {
+        setState(() => updCand = u);
+        _addUpdateMessage(u);
+      }
     } catch (_) {}
   }
 
@@ -173,7 +200,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   // ---------- announcements (messages to customers) ----------
 
   int get _unread {
-    final items = parseAnnouncements(store.annJson);
+    final items = allMessages(store.annJson, store.sysJson);
     return items.where((a) => !store.annDeleted.contains(a.id) && !store.annReadIds.contains(a.id)).length;
   }
 
@@ -204,7 +231,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Future<void> _markAllRead() async {
-    final items = parseAnnouncements(store.annJson);
+    final items = allMessages(store.annJson, store.sysJson);
     for (final a in items) {
       if (!store.annDeleted.contains(a.id)) store.annReadIds.add(a.id);
     }
@@ -377,13 +404,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     ];
     if (cand.isEmpty) cand = List<int>.generate(nodes.length, (i) => i).where((i) => !nodes[i].isInfo).toList();
     if (cand.isEmpty) return;
-    // the network decides which server family usually works best (1 = Hamrah-e-Aval, 2 = the rest)
-    await _detectNet();
-    final g = _preferredGroup();
-    if (g.isNotEmpty) {
-      final pref = cand.where((i) => nodes[i].group == g).toList();
-      if (pref.isNotEmpty) cand = pref;
-    }
+
     cand.sort((a, b) => (nodes[a].stat?.score ?? 5000).compareTo(nodes[b].stat?.score ?? 5000));
     cand = cand.take(5).toList();
 
@@ -473,7 +494,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         await _refreshSubs();
       } else {
         final obs = await convert(text);
-        store.nodes.addAll(obs.map((o) => Node(o, 'manual')));
+        final lines = text.split(RegExp(r'[\r\n]+')).map((e) => e.trim()).where((e) => e.contains('://')).toList();
+        store.nodes.addAll([
+          for (var k = 0; k < obs.length; k++) Node(obs[k], 'manual')..link = (obs.length == lines.length ? lines[k] : null),
+        ]);
         await store.save();
         _toast('${obs.length} ${tr('added_n')}');
       }
@@ -561,6 +585,29 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 ),
               ),
             ],
+            if (n.link != null) ...[
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, children: [
+                OutlinedButton.icon(
+                  onPressed: () => showQrDialog(context, n.name, n.link!),
+                  icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                  label: const Text('QR'),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () async {
+                    await Clipboard.setData(ClipboardData(text: n.link!));
+                    _toast(tr('copied'));
+                  },
+                  icon: const Icon(Icons.copy_rounded, size: 18),
+                  label: Text(tr('copy_link')),
+                ),
+                OutlinedButton.icon(
+                  onPressed: () => Core.share(n.link!),
+                  icon: const Icon(Icons.share_rounded, size: 18),
+                  label: Text(tr('share')),
+                ),
+              ]),
+            ],
             const SizedBox(height: 12),
             Align(
               alignment: AlignmentDirectional.centerEnd,
@@ -579,67 +626,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           ]),
         ),
       ),
-    );
-  }
-
-  // ---------- network profile ----------
-
-  Future<void> _detectNet() async {
-    try {
-      final n = await Core.network();
-      if (mounted && (n.type != _net.type || n.plmn != _net.plmn)) setState(() => _net = n);
-      if (!mounted) _net = n;
-    } catch (_) {}
-  }
-
-  /// '1', '2' or '' (no preference).
-  String _preferredGroup() {
-    switch (store.netProfile) {
-      case 'mci':
-        return '1';
-      case 'other':
-        return '2';
-      case 'off':
-        return '';
-    }
-    if (_net.type == 'wifi') return '2'; // home modem / fiber
-    if (_net.type == 'cellular') {
-      if (_net.plmn.isEmpty) return '';
-      return _net.plmn == '43211' ? '1' : '2'; // Hamrah-e-Aval = 1, Irancell / Rightel / others = 2
-    }
-    return '';
-  }
-
-  String _netName() {
-    if (store.netProfile == 'mci') return tr('net_label_mci');
-    if (store.netProfile == 'other') return tr('net_label_other');
-    if (_net.type == 'wifi') return tr('net_label_wifi');
-    if (_net.type == 'cellular') {
-      switch (_net.plmn) {
-        case '43211':
-          return tr('net_label_mci');
-        case '43235':
-          return tr('net_label_irancell');
-        case '43220':
-          return 'Rightel';
-      }
-      return tr('net_label_cell');
-    }
-    return '—';
-  }
-
-  Widget _netChip() {
-    final g = _preferredGroup();
-    if (!store.autoSelect || g.isEmpty) return const SizedBox.shrink();
-    final gg = isFa ? faDigits(g) : g;
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
-        const SizedBox(width: 6),
-        Text('${tr('network_now')}: ${_netName()} · ${tr('prefers')} $gg',
-            style: TextStyle(fontSize: 12.5, color: Pal.t3)),
-      ]),
     );
   }
 
@@ -770,6 +756,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                         icon: const Icon(Icons.share_rounded, size: 18),
                         label: Text(tr('share')),
                       ),
+                      TextButton.icon(
+                        onPressed: () => showQrDialog(context, tr('sub_links'), url),
+                        icon: const Icon(Icons.qr_code_2_rounded, size: 18),
+                        label: const Text('QR'),
+                      ),
                       const Spacer(),
                       IconButton(
                         tooltip: tr('delete'),
@@ -849,6 +840,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                   icon: const Icon(Icons.content_paste_rounded, size: 18),
                   label: Text(tr('paste')),
                 ),
+                if (!Platform.isWindows) ...[
+                  const SizedBox(width: 8),
+                  OutlinedButton.icon(
+                    onPressed: () {
+                      Navigator.pop(ctx);
+                      _scanQr();
+                    },
+                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                    label: Text(tr('scan_qr')),
+                  ),
+                ],
                 const Spacer(),
                 FilledButton.icon(
                   onPressed: () {
@@ -864,6 +866,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         ),
       ),
     );
+  }
+
+  Future<void> _scanQr() async {
+    final v = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const ScanPage()));
+    if (v != null && v.isNotEmpty) _addText(v);
   }
 
   void _goTab(int i) {
@@ -1082,7 +1089,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         ),
       const SizedBox(height: 12),
       _modeToggle(),
-      _netChip(),
       const SizedBox(height: 12),
       if (running) _speedCard(),
       if (running) const SizedBox(height: 10),
@@ -1338,6 +1344,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         const SizedBox(height: 16),
         FilledButton.icon(onPressed: _addSheet, icon: const Icon(Icons.add_rounded), label: Text(tr('add_config'))),
         const SizedBox(height: 4),
+        if (!Platform.isWindows)
+          TextButton.icon(
+            onPressed: _scanQr,
+            icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+            label: Text(tr('scan_qr')),
+          ),
         TextButton.icon(
           onPressed: _pasteAdd,
           icon: const Icon(Icons.content_paste_rounded, size: 18),
@@ -1507,11 +1519,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                           overflow: TextOverflow.ellipsis,
                           style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Pal.t1)),
                     ),
-                    if (!n.isInfo && _preferredGroup().isNotEmpty && n.group == _preferredGroup())
-                      Padding(
-                        padding: const EdgeInsetsDirectional.only(start: 6),
-                        child: Icon(Icons.star_rounded, size: 16, color: Pal.orange),
-                      ),
                   ]),
                   const SizedBox(height: 2),
                   Text(n.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Pal.t4)),

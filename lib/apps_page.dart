@@ -53,6 +53,12 @@ class _AppsPageState extends State<AppsPage> {
       final list = (apps ?? [])
           .where((a) => q.isEmpty || a.name.toLowerCase().contains(q.toLowerCase()) || a.pkg.contains(q))
           .toList();
+      list.sort((a, b) {
+        final x = sel.contains(a.pkg) ? 0 : 1;
+        final y = sel.contains(b.pkg) ? 0 : 1;
+        if (x != y) return x - y; // chosen apps float to the top
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
       final enabled = mode != 'all';
       final content = Column(children: [
               Padding(

@@ -7,6 +7,9 @@ const kAnnounceUrls = [
   'https://cdn.jsdelivr.net/gh/mojyrayzor-prog/dastras-ng@main/announcements.json',
 ];
 
+/// Opened by the "update" message the app adds to the inbox when a new version exists.
+const kUpdateUrl = 'app://update';
+
 class Announcement {
   final int id;
   final String title, body, url, date;
@@ -34,4 +37,11 @@ List<Announcement> parseAnnouncements(String raw) {
   } catch (_) {
     return [];
   }
+}
+
+/// Server announcements plus messages the app creates itself, newest first.
+List<Announcement> allMessages(String annJson, String sysJson) {
+  final all = [...parseAnnouncements(annJson), ...parseAnnouncements(sysJson)];
+  all.sort((a, b) => b.id.compareTo(a.id));
+  return all;
 }

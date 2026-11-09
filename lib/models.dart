@@ -39,6 +39,7 @@ class Node {
 
   String get name => (ob['tag'] ?? ob['protocol'] ?? 'node').toString();
   String get key => '$name|$address';
+  String? link; // the original share link (only for configs added by hand)
 
   /// 1 or 2 from the name's trailing number ("UK 1", "IT 2"); falls back to the protocol (trojan = 1, vless = 2).
   String get group {
@@ -115,13 +116,14 @@ class Node {
     return null;
   }
 
-  Map<String, dynamic> toJson() => {'ob': ob, 'src': src, 'tcp': tcp, 'real': real, 't': tested};
+  Map<String, dynamic> toJson() => {'ob': ob, 'src': src, 'tcp': tcp, 'real': real, 't': tested, 'lnk': link};
 
   factory Node.fromJson(Map<String, dynamic> j) {
     final n = Node(Map<String, dynamic>.from(j['ob'] as Map), (j['src'] ?? 'manual').toString());
     n.tcp = j['tcp'] is int ? j['tcp'] as int : null;
     n.real = j['real'] is int ? j['real'] as int : (j['d'] is int ? j['d'] as int : null);
     n.tested = j['t'] == true;
+    n.link = j['lnk'] is String ? j['lnk'] as String : null;
     return n;
   }
 }
@@ -158,7 +160,8 @@ class Store {
   bool mux = false;
   bool blockAds = false;
   bool announceOn = true;
-  String netProfile = 'auto'; // auto | mci | other | off
+  String sysJson = '[]'; // messages the app writes itself (e.g. new version)
+  int updNotified = 0;
   int annRead = -1; // -1 = announcements never initialised yet
   Set<int> annReadIds = {};
   Set<int> annDeleted = {};
@@ -189,7 +192,6 @@ class Store {
     blockQuic = true;
     mtu = 1500;
     announceOn = true;
-    netProfile = 'auto';
   }
 
   // Sensitive data (servers, subscription links) goes to the Android Keystore-backed
@@ -254,7 +256,8 @@ class Store {
     dns = _p.getString('dns') ?? 'google';
     ipv6 = _p.getBool('ipv6') ?? false;
     announceOn = _p.getBool('announceOn') ?? true;
-    netProfile = _p.getString('netProfile') ?? 'auto';
+    sysJson = _p.getString('sysJson') ?? '[]';
+    updNotified = _p.getInt('updNotified') ?? 0;
     annRead = _p.getInt('annRead') ?? -1;
     annReadIds = (_p.getStringList('annReadIds') ?? <String>[]).map(int.tryParse).whereType<int>().toSet();
     annDeleted = (_p.getStringList('annDeleted') ?? <String>[]).map(int.tryParse).whereType<int>().toSet();
@@ -308,7 +311,8 @@ class Store {
     await _p.setBool('blockQuic', blockQuic);
     await _p.setInt('mtu', mtu);
     await _p.setBool('announceOn', announceOn);
-    await _p.setString('netProfile', netProfile);
+    await _p.setString('sysJson', sysJson);
+    await _p.setInt('updNotified', updNotified);
     await _p.setInt('annRead', annRead);
     await _p.setStringList('annReadIds', annReadIds.map((e) => '$e').toList());
     await _p.setStringList('annDeleted', annDeleted.map((e) => '$e').toList());

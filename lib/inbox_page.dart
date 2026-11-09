@@ -6,6 +6,7 @@ import 'main.dart' show openAny;
 import 'models.dart';
 import 'pal.dart';
 import 'theme.dart';
+import 'update.dart';
 
 class InboxPage extends StatefulWidget {
   final Store store;
@@ -20,7 +21,7 @@ class _InboxPageState extends State<InboxPage> {
   Store get s => widget.store;
 
   List<Announcement> get _items =>
-      parseAnnouncements(s.annJson).where((a) => !s.annDeleted.contains(a.id)).toList();
+      allMessages(s.annJson, s.sysJson).where((a) => !s.annDeleted.contains(a.id)).toList();
 
   Future<void> _commit() async {
     await s.save();
@@ -147,10 +148,14 @@ class _InboxPageState extends State<InboxPage> {
                                 TextButton.icon(
                                   onPressed: () {
                                     _markRead(a);
-                                    openAny(a.url);
+                                    if (a.url == kUpdateUrl) {
+                                      Navigator.push(context, MaterialPageRoute(builder: (_) => const UpdatePage()));
+                                    } else {
+                                      openAny(a.url);
+                                    }
                                   },
-                                  icon: const Icon(Icons.open_in_new_rounded, size: 18),
-                                  label: Text(tr('open_link')),
+                                  icon: Icon(a.url == kUpdateUrl ? Icons.system_update_rounded : Icons.open_in_new_rounded, size: 18),
+                                  label: Text(a.url == kUpdateUrl ? tr('update_now') : tr('open_link')),
                                 ),
                               IconButton(
                                 tooltip: tr('delete'),

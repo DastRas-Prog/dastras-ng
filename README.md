@@ -27,18 +27,19 @@
 
 | | |
 |---|---|
-| 🚀 **Smart auto-connect** | Tests every server (latency + stability) before connecting and picks the best one for your network |
-| 📶 **Network-aware** | Detects whether you are on mobile data (by operator) or Wi-Fi / modem / fiber and prefers the server family that works best there |
+| ⚡ **High speed** | Tuned for throughput: QUIC blocking, MTU control, lightweight routing and no extra overhead |
+| 🇮🇷 **Bypasses Iranian IPs and sites** | Iranian websites and IPs go direct, everything else goes through the VPN |
+| 🚀 **Smart auto-connect** | Tests every server (latency and stability) before connecting and picks the best one |
 | 🔁 **Seamless server switch** | Tap another server while connected and it reconnects by itself |
 | 📊 **Live speed** | Real-time download / upload, session usage, graph and a live notification with a *Disconnect* button |
-| 🧩 **Per-app proxy** | Send only the apps you choose through the VPN, or everything except them |
-| 🔗 **Subscriptions** | Links and JSON subscriptions (Marzban), auto-refresh, usage bar, copy / share the link |
+| 🧩 **Per-app proxy** | Send only the apps you choose through the VPN, or everything except them. Chosen apps are shown first |
+| 🔗 **Subscriptions** | Links and JSON subscriptions, auto-refresh, usage bar, copy / share the link |
+| 📷 **QR codes** | Scan a QR with the camera to add a subscription or config, and show a QR of your links |
 | ⏰ **Account alerts** | Warns when data is almost gone or the account is about to expire, with one tap to message support on Telegram |
-| 📣 **Announcements** | Publish a message to all customers by editing a single JSON file |
-| 🔄 **In-app updates** | Reads new releases from GitHub, shows the changelog and installs the update |
+| 🔄 **In-app updates** | Reads new releases from GitHub, tells you in the inbox, shows the changelog and installs the update |
 | 🎨 **Modern design** | Light / dark / system themes, floating glass tab bar, Persian and English, Jalali dates |
 | 🔒 **Privacy first** | No accounts, no analytics. Servers are stored encrypted, backups are disabled, no local proxy port is opened |
-| ⚙️ **Tunable** | Block QUIC, MTU, DNS, TLS fragment, Mux, IPv6, ad blocking, bypass Iranian sites |
+| ⚙️ **Tunable** | Block QUIC, MTU, DNS, TLS fragment, Mux, IPv6, ad blocking |
 
 ### 📥 Download
 
@@ -56,44 +57,8 @@ Get the newest version from the **[Releases page](https://github.com/mojyrayzor-
 ### 🚀 Quick start
 
 1. Install the APK and open the app (choose your language).
-2. Copy your **subscription link** (or a `vless://`, `vmess://`, `trojan://`, `ss://` link). The app offers to add it automatically, or tap **Servers → ＋**.
+2. Copy your **subscription link** (or a `vless://`, `vmess://`, `trojan://`, `ss://` link) and the app offers to add it, or tap **Servers → ＋**, or scan a **QR code**.
 3. Press the big power button. That's it.
-
-### 🧠 Auto-select and network profile
-
-Before connecting, the app measures every server and chooses the one with the lowest delay and the best stability.
-If your servers are numbered (`DE 1`, `DE 2` …) the app can also use the network you are on:
-
-| Your network | Preferred servers |
-|---|---|
-| Mobile data – Hamrah-e-Aval (MCI) | numbered **1** (Trojan) |
-| Mobile data – Irancell / Rightel, Wi-Fi, modem, fiber | numbered **2** (VLESS) |
-
-You can change this in *Settings → Automation → Network profile*. If the preferred servers fail, all other servers are tested too.
-
-### 🔧 For panel admins (Marzban)
-
-* The app reads `subscription-userinfo`, `profile-title` and `support-url` headers.
-* It first asks for plain share links (fast). Turn on **“Server's own anti-filter settings”** to use the panel's JSON with its fragment / mux.
-* Fake “info” servers (user name, days left) are shown but never auto-selected.
-
-### 📣 Announcements to customers
-
-Edit [`announcements.json`](announcements.json) in this repository and commit:
-
-```json
-[
-  {
-    "id": 2,
-    "title": "Maintenance tonight",
-    "body": "Servers will be updated at 23:00.",
-    "url": "https://t.me/dastras/123",
-    "date": "2026-11-10"
-  }
-]
-```
-
-`id` must always be bigger than the previous one. Customers receive it within ~10–15 minutes (as a notification while the VPN is connected, or in the inbox when the app is open).
 
 ### 🛠 Build from source
 
@@ -112,7 +77,7 @@ The VPN runs in its own process that is closed on disconnect, so the icon disapp
 <details>
 <summary>Speed is slower than expected</summary>
 
-Keep *Mux* and *server anti-filter settings* off, keep *Block QUIC* on, and try MTU 1400. Choose a server from the other family in *Servers*.
+Keep *Mux* and *panel anti-filter settings* off, keep *Block QUIC* on, and try MTU 1400. Pick a different server in *Servers*.
 </details>
 
 <details>
@@ -139,18 +104,19 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 
 | | |
 |---|---|
-| 🚀 **اتصال خودکار هوشمند** | قبل از اتصال همه‌ی سرورها از نظر تأخیر و پایداری تست می‌شوند و بهترین سرور برای شبکه‌ی شما انتخاب می‌شود |
-| 📶 **آگاه از شبکه** | تشخیص می‌دهد روی اینترنت همراه (به‌تفکیک اپراتور) هستید یا وای‌فای، مودم و فیبر و خانواده‌ی سرور مناسب را اولویت می‌دهد |
+| ⚡ **سرعت بالا** | بهینه برای سرعت: مسدودسازی QUIC، تنظیم MTU، مسیریابی سبک و بدون سربار اضافه |
+| 🇮🇷 **عبور مستقیم IP و سایت‌های ایرانی** | سایت‌ها و IPهای ایرانی مستقیم باز می‌شوند و بقیه از VPN می‌گذرند |
+| 🚀 **اتصال خودکار هوشمند** | قبل از اتصال همه‌ی سرورها از نظر تأخیر و پایداری تست می‌شوند و بهترین سرور انتخاب می‌شود |
 | 🔁 **تعویض بدون دردسر سرور** | وسط اتصال روی سرور دیگری بزنید، خودش دوباره وصل می‌شود |
 | 📊 **سرعت لحظه‌ای** | سرعت دانلود و آپلود، مصرف همین اتصال، نمودار و نوتیفیکیشن زنده با دکمه‌ی «قطع اتصال» |
-| 🧩 **پروکسی برنامه‌ها** | فقط برنامه‌های انتخابی یا همه به‌جز آن‌ها از VPN استفاده کنند |
-| 🔗 **اشتراک‌ها** | لینک و ساب JSON (مرزبان)، به‌روزرسانی خودکار، نوار حجم، کپی و اشتراک‌گذاری لینک |
+| 🧩 **پروکسی برنامه‌ها** | فقط برنامه‌های انتخابی یا همه به‌جز آن‌ها از VPN استفاده کنند. برنامه‌های انتخاب‌شده بالای لیست می‌آیند |
+| 🔗 **اشتراک‌ها** | لینک و ساب JSON، به‌روزرسانی خودکار، نوار حجم، کپی و اشتراک‌گذاری لینک |
+| 📷 **کد QR** | با دوربین QR را اسکن کنید تا ساب یا کانفیگ اضافه شود، و از لینک‌هایتان QR بسازید |
 | ⏰ **هشدار اکانت** | وقتی حجم رو به اتمام است یا اکانت دارد تمام می‌شود هشدار می‌دهد و با یک لمس در تلگرام به پشتیبانی پیام می‌دهد |
-| 📣 **اعلان به مشتریان** | با ویرایش یک فایل JSON برای همه‌ی مشتری‌ها پیام بفرستید |
-| 🔄 **به‌روزرسانی داخل برنامه** | نسخه‌ی جدید را از گیت‌هاب می‌خواند، تغییرات را نشان می‌دهد و نصب می‌کند |
+| 🔄 **به‌روزرسانی داخل برنامه** | نسخه‌ی جدید را از گیت‌هاب می‌خواند، در پیام‌ها خبر می‌دهد، تغییرات را نشان می‌دهد و نصب می‌کند |
 | 🎨 **طراحی مدرن** | تم سفید، تیره و سیستم، نوار تب شیشه‌ای شناور، فارسی و انگلیسی، تاریخ شمسی |
 | 🔒 **حریم خصوصی** | بدون ثبت‌نام و بدون ردیابی. سرورها رمزنگاری‌شده ذخیره می‌شوند و هیچ پورت محلی باز نمی‌شود |
-| ⚙️ **قابل تنظیم** | مسدودسازی QUIC، MTU، DNS، فرگمنت TLS، Mux، IPv6، مسدودکردن تبلیغات، عبور مستقیم سایت‌های ایرانی |
+| ⚙️ **قابل تنظیم** | مسدودسازی QUIC، MTU، DNS، فرگمنت TLS، Mux، IPv6، مسدودکردن تبلیغات |
 
 ### 📥 دانلود
 
@@ -168,44 +134,8 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 ### 🚀 شروع سریع
 
 1. فایل APK را نصب و برنامه را باز کنید (زبان را انتخاب کنید).
-2. **لینک ساب** (یا لینک `vless://`، `vmess://`، `trojan://`، `ss://`) را کپی کنید. برنامه خودش پیشنهاد افزودن می‌دهد، یا از تب **سرورها** دکمه‌ی ＋ را بزنید.
+2. **لینک ساب** (یا لینک `vless://`، `vmess://`، `trojan://`، `ss://`) را کپی کنید تا برنامه پیشنهاد افزودن بدهد، یا از تب **سرورها** دکمه‌ی ＋ را بزنید، یا **کد QR** را اسکن کنید.
 3. دکمه‌ی بزرگ وسط صفحه را بزنید. تمام!
-
-### 🧠 انتخاب خودکار و پروفایل شبکه
-
-برنامه قبل از اتصال همه‌ی سرورها را می‌سنجد و سروری را که کمترین تأخیر و بیشترین پایداری را دارد انتخاب می‌کند.
-اگر سرورهای شما شماره‌دار باشند (`DE 1`، `DE 2` …) برنامه شبکه‌ای را که روی آن هستید هم در نظر می‌گیرد:
-
-| شبکه‌ی شما | سرورهای اولویت‌دار |
-|---|---|
-| اینترنت همراه، همراه اول | سرورهای شماره‌ی **۱** (تروجان) |
-| اینترنت همراه ایرانسل و رایتل، وای‌فای، مودم، فیبر | سرورهای شماره‌ی **۲** (VLESS) |
-
-این گزینه از مسیر *تنظیمات ← خودکارسازی ← پروفایل شبکه* قابل تغییر است. اگر سرورهای اولویت‌دار کار نکنند، بقیه‌ی سرورها هم تست می‌شوند.
-
-### 🔧 برای مدیران پنل (مرزبان)
-
-* هدرهای `subscription-userinfo`، `profile-title` و `support-url` خوانده می‌شوند.
-* برنامه اول لینک‌های ساده را می‌گیرد (سریع‌تر). گزینه‌ی **«تنظیمات ضدفیلتر خود سرور»** را روشن کنید تا از JSON پنل با فرگمنت و Mux خودش استفاده شود.
-* سرورهای «اطلاعاتی» (نام کاربر، روزهای باقی‌مانده) نمایش داده می‌شوند ولی هرگز خودکار انتخاب نمی‌شوند.
-
-### 📣 اعلان به مشتریان
-
-فایل [`announcements.json`](announcements.json) را در همین مخزن ویرایش و Commit کنید:
-
-```json
-[
-  {
-    "id": 2,
-    "title": "تعمیرات امشب",
-    "body": "ساعت ۲۳ سرورها به‌روزرسانی می‌شوند.",
-    "url": "https://t.me/dastras/123",
-    "date": "2026-11-10"
-  }
-]
-```
-
-مقدار `id` باید همیشه از قبلی بزرگ‌تر باشد. مشتری‌ها حدود ۱۰ تا ۱۵ دقیقه بعد پیام را می‌گیرند (به‌صورت اعلان وقتی VPN وصل است، یا در صندوق پیام‌ها وقتی برنامه باز است).
 
 ### 🛠 ساخت از روی سورس
 
@@ -224,7 +154,7 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 <details>
 <summary>سرعت کمتر از انتظار است</summary>
 
-گزینه‌های *Mux* و *تنظیمات ضدفیلتر سرور* را خاموش و *مسدود کردن QUIC* را روشن نگه دارید و MTU را روی ۱۴۰۰ امتحان کنید. از تب سرورها یک سرور از خانواده‌ی دیگر را انتخاب کنید.
+گزینه‌های *Mux* و *تنظیمات ضدفیلتر پنل* را خاموش و *مسدود کردن QUIC* را روشن نگه دارید و MTU را روی ۱۴۰۰ امتحان کنید. از تب سرورها یک سرور دیگر را انتخاب کنید.
 </details>
 
 <details>
