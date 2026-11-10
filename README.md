@@ -51,8 +51,13 @@ Get the newest version from the **[Releases page](https://github.com/mojyrayzor-
 | [`app-armeabi-v7a-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | Older 32-bit phones |
 | [`app-x86_64-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | Emulators, some tablets |
 | [`app-universal-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-universal-release.apk) | Works everywhere (bigger file) |
+| [`DastRas-NG-windows.zip`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **Windows 10 / 11** (extract, then run `DastRas-NG.exe`) |
 
 > **First install:** Android may show a warning for apps installed outside Google Play. Tap **Install anyway**.
+
+### 🖥 Windows
+
+The Windows version sets the **system proxy** (like v2rayN), so browsers and most apps use the VPN. It restores your previous proxy settings when you disconnect or close the app, picks free ports automatically and restarts the core if the connection silently dies. Some apps (games, Microsoft Store apps) ignore the system proxy.
 
 ### 🚀 Quick start
 
@@ -128,8 +133,13 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 | [`app-armeabi-v7a-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | گوشی‌های قدیمی ۳۲ بیتی |
 | [`app-x86_64-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | شبیه‌ساز و بعضی تبلت‌ها |
 | [`app-universal-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-universal-release.apk) | روی همه‌ی گوشی‌ها کار می‌کند (حجم بیشتر) |
+| [`DastRas-NG-windows.zip`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **ویندوز ۱۰ و ۱۱** (استخراج کنید و `DastRas-NG.exe` را اجرا کنید) |
 
 > **نصب اول:** اندروید برای برنامه‌هایی که از گوگل‌پلی نصب نشده‌اند هشدار می‌دهد. گزینه‌ی **Install anyway** را بزنید.
+
+### 🖥 ویندوز
+
+نسخه‌ی ویندوز **پروکسی سیستم** را تنظیم می‌کند (مثل v2rayN)، پس مرورگرها و بیشتر برنامه‌ها از VPN استفاده می‌کنند. با قطع کردن یا بستن برنامه، تنظیمات قبلی پروکسی شما برگردانده می‌شود، پورت‌ها خودکار آزاد انتخاب می‌شوند و اگر اتصال بی‌صدا قطع شود هسته دوباره راه‌اندازی می‌شود. بعضی برنامه‌ها (بازی‌ها و برنامه‌های فروشگاه مایکروسافت) پروکسی سیستم را نادیده می‌گیرند.
 
 ### 🚀 شروع سریع
 

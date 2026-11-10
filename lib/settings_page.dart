@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 
 import 'apps_page.dart';
@@ -10,6 +12,7 @@ import 'pal.dart';
 import 'service.dart';
 import 'theme.dart';
 import 'update.dart';
+import 'win_core.dart';
 
 class SettingsPage extends StatefulWidget {
   final Store store;
@@ -116,6 +119,7 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ),
+                      if (!Platform.isWindows)
                       ListTile(
                         leading: Icon(Icons.apps_rounded, color: Pal.cyan),
                         title: Text(tr('per_app')),
@@ -192,10 +196,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       }, sub: tr('opt_panel_tuning_sub'), icon: Icons.tune_rounded),
                       _switch(tr('opt_fragment'), s.fragment, (v) => s.fragment = v, icon: Icons.content_cut_rounded),
                       _switch(tr('opt_mux'), s.mux, (v) => s.mux = v, icon: Icons.merge_type_rounded),
-                      _switch(tr('opt_ipv6'), s.ipv6, (v) => s.ipv6 = v, icon: Icons.public_rounded),
+                      if (!Platform.isWindows) _switch(tr('opt_ipv6'), s.ipv6, (v) => s.ipv6 = v, icon: Icons.public_rounded),
                       _switch(tr('opt_block_quic'), s.blockQuic, (v) => s.blockQuic = v,
                           sub: tr('opt_block_quic_sub'), icon: Icons.speed_rounded),
                       _switch(tr('opt_ads'), s.blockAds, (v) => s.blockAds = v, icon: Icons.block_rounded),
+                      if (!Platform.isWindows)
                       ListTile(
                         leading: Icon(Icons.straighten_rounded, color: Pal.cyan),
                         title: const Text('MTU'),
@@ -229,6 +234,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ]),
                     _section(tr('sec_security'), [
                       _switch(tr('opt_https_only'), s.httpsOnly, (v) => s.httpsOnly = v, icon: Icons.lock_rounded),
+                      if (!Platform.isWindows)
                       ListTile(
                         leading: Icon(Icons.vpn_lock_rounded, color: Pal.cyan),
                         title: Text(tr('sys_vpn')),
@@ -237,6 +243,19 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       _note(tr('sec_note')),
                     ]),
+                    if (Platform.isWindows)
+                      _section(tr('sec_windows'), [
+                        _switch(tr('opt_autostart'), s.winAutostart, (v) {
+                          s.winAutostart = v;
+                          WinCore.setAutostart(v);
+                        }, icon: Icons.play_circle_outline_rounded),
+                        ListTile(
+                          leading: Icon(Icons.folder_open_rounded, color: Pal.cyan),
+                          title: Text(tr('show_logs')),
+                          onTap: () => WinCore.openLogs(),
+                        ),
+                        _note(tr('win_note')),
+                      ]),
                     _section(tr('app_update'), [
                       ListTile(
                         leading: Icon(Icons.system_update_rounded, color: Pal.cyan),

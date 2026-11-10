@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -160,6 +161,7 @@ class Store {
   bool mux = false;
   bool blockAds = false;
   bool announceOn = true;
+  bool winAutostart = false;
   String sysJson = '[]'; // messages the app writes itself (e.g. new version)
   int updNotified = 0;
   int annRead = -1; // -1 = announcements never initialised yet
@@ -197,6 +199,7 @@ class Store {
   // Sensitive data (servers, subscription links) goes to the Android Keystore-backed
   // secure storage; falls back to plain prefs only if secure storage is unavailable.
   Future<String?> _getSecret(String k) async {
+    if (Platform.isWindows) return _p.getString(k);
     try {
       final v = await _sec.read(key: k);
       if (v != null) return v;
@@ -205,6 +208,10 @@ class Store {
   }
 
   Future<void> _putSecret(String k, String v) async {
+    if (Platform.isWindows) {
+      await _p.setString(k, v);
+      return;
+    }
     try {
       await _sec.write(key: k, value: v);
       if (await _sec.read(key: k) == v) {
@@ -256,6 +263,7 @@ class Store {
     dns = _p.getString('dns') ?? 'google';
     ipv6 = _p.getBool('ipv6') ?? false;
     announceOn = _p.getBool('announceOn') ?? true;
+    winAutostart = _p.getBool('winAutostart') ?? false;
     sysJson = _p.getString('sysJson') ?? '[]';
     updNotified = _p.getInt('updNotified') ?? 0;
     annRead = _p.getInt('annRead') ?? -1;
@@ -311,6 +319,7 @@ class Store {
     await _p.setBool('blockQuic', blockQuic);
     await _p.setInt('mtu', mtu);
     await _p.setBool('announceOn', announceOn);
+    await _p.setBool('winAutostart', winAutostart);
     await _p.setString('sysJson', sysJson);
     await _p.setInt('updNotified', updNotified);
     await _p.setInt('annRead', annRead);

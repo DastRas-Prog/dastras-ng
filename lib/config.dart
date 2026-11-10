@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
 import 'models.dart';
 
 const kDns = <String, List<String>>{
@@ -95,7 +96,9 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
   if (!outbounds.any((o) => o['tag'] == 'direct')) outbounds.add({'tag': 'direct', 'protocol': 'freedom'});
   if (!outbounds.any((o) => o['tag'] == 'block')) outbounds.add({'tag': 'block', 'protocol': 'blackhole'});
 
+  final win = Platform.isWindows;
   final rules = <Map<String, dynamic>>[
+    if (win) {'type': 'field', 'inboundTag': ['api'], 'outboundTag': 'api'},
     if (s.blockQuic)
       {'type': 'field', 'network': 'udp', 'port': '443', 'outboundTag': 'block'},
     if (s.blockAds)
@@ -110,7 +113,46 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
   final cfg = {
     'log': {'loglevel': 'warning'},
     'dns': {'servers': dnsList(s), 'queryStrategy': s.ipv6 ? 'UseIP' : 'UseIPv4'},
-    'inbounds': [
+    if (win) ...{
+      'stats': {},
+      'api': {'tag': 'api', 'services': ['StatsService']},
+      'policy': {
+        'system': {'statsOutboundUplink': true, 'statsOutboundDownlink': true}
+      },
+    },
+    'inbounds': win
+        ? [
+            {
+              'tag': 'socks-in',
+              'listen': '127.0.0.1',
+              'port': 10808,
+              'protocol': 'socks',
+              'settings': {'udp': true, 'auth': 'noauth'},
+              'sniffing': {
+                'enabled': true,
+                'destOverride': ['http', 'tls']
+              }
+            },
+            {
+              'tag': 'http-in',
+              'listen': '127.0.0.1',
+              'port': 10809,
+              'protocol': 'http',
+              'settings': {},
+              'sniffing': {
+                'enabled': true,
+                'destOverride': ['http', 'tls']
+              }
+            },
+            {
+              'tag': 'api',
+              'listen': '127.0.0.1',
+              'port': 10085,
+              'protocol': 'dokodemo-door',
+              'settings': {'address': '127.0.0.1'}
+            },
+          ]
+        : [
       {
         'tag': 'tun-in',
         'protocol': 'tun',

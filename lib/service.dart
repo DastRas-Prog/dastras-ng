@@ -218,6 +218,8 @@ Future<TcpStat?> _tcp(Node n, int samples) async {
   return TcpStat(t.length, samples, t.reduce(math.min), t.reduce(math.max), sum / t.length);
 }
 
+Future<TcpStat?> tcpStat(Node n, int samples) => _tcp(n, samples);
+
 /// Tests every node in parallel (16 at a time) and stores the result on the nodes.
 Future<void> tcpPingAll(List<Node> nodes, {int samples = 2}) async {
   for (var i = 0; i < nodes.length; i += 16) {

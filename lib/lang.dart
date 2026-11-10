@@ -184,6 +184,10 @@ const _fa = {
   'scan_qr': 'اسکن QR',
   'scan_hint': 'کد QR را داخل کادر بگیرید',
   'copy_link': 'کپی لینک',
+  'sec_windows': 'ویندوز',
+  'opt_autostart': 'اجرای خودکار با روشن شدن ویندوز',
+  'show_logs': 'نمایش پوشه‌ی گزارش‌ها (Log)',
+  'win_note': 'در ویندوز، برنامه «پروکسی سیستم» را تنظیم می‌کند (مثل v2rayN). مرورگرها و بیشتر برنامه‌ها از آن استفاده می‌کنند؛ بعضی برنامه‌ها (بازی‌ها و برنامه‌های فروشگاه مایکروسافت) آن را نادیده می‌گیرند. با بستن برنامه، تنظیمات قبلی پروکسی شما دوباره برگردانده می‌شود. برای اتصال خودکار بعد از روشن شدن ویندوز، گزینه‌ی «اتصال خودکار هنگام باز شدن برنامه» را هم روشن کنید.',
 };
 
 const _en = {
@@ -343,4 +347,8 @@ const _en = {
   'scan_qr': 'Scan QR',
   'scan_hint': 'Point the camera at a QR code',
   'copy_link': 'Copy link',
+  'sec_windows': 'Windows',
+  'opt_autostart': 'Start with Windows',
+  'show_logs': 'Open the log folder',
+  'win_note': 'On Windows the app sets the system proxy (like v2rayN). Browsers and most apps use it; some apps (games, Microsoft Store apps) ignore it. When you close the app your previous proxy settings are restored. To connect automatically after Windows starts, also turn on "Connect automatically when the app opens".',
 };

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -105,6 +106,12 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
           ),
+          builder: (context, child) => Platform.isWindows
+              ? ColoredBox(
+                  color: Pal.bg0,
+                  child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: child)),
+                )
+              : child!,
           home: const Gate(),
         );
       },

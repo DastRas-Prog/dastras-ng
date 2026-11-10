@@ -21,6 +21,7 @@ import 'service.dart';
 import 'settings_page.dart';
 import 'theme.dart';
 import 'update.dart';
+import 'win_core.dart';
 
 String fmtBytes(int b) {
   const u = ['B', 'KB', 'MB', 'GB', 'TB'];
@@ -81,6 +82,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   final List<int> downHist = [];
   Timer? timer;
   Timer? refreshTimer;
+  AppLifecycleListener? _exitListener;
   bool _refreshing = false;
   DateTime _lastAnn = DateTime.fromMillisecondsSinceEpoch(0);
 
@@ -99,6 +101,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     timer?.cancel();
     refreshTimer?.cancel();
+    _exitListener?.dispose();
     super.dispose();
   }
 
@@ -112,6 +115,25 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Future<void> _init() async {
     await store.load();
+    if (Platform.isWindows) {
+      await WinCore.cleanupStale(); // undo anything a crashed session left behind
+      // closing the window must always restore the user's proxy settings
+      _exitListener = AppLifecycleListener(onExitRequested: () async {
+        await Core.stop();
+        return AppExitResponse.exit;
+      });
+      // the core could not be revived: move on to the next server
+      WinCore.onUnhealthy = () {
+        if (!mounted || store.nodes.length < 2) return;
+        for (var k = 1; k <= store.nodes.length; k++) {
+          final i = (store.selected + k) % store.nodes.length;
+          if (!store.nodes[i].isInfo) {
+            _select(i);
+            break;
+          }
+        }
+      };
+    }
     status = await Core.status();
     if (!mounted) return;
     setState(() => ready = true);
@@ -942,7 +964,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       (Icons.settings_rounded, tr('tab_settings')),
     ];
     final unread = _unread;
-    final n = items.length;
+    // there is no per-app proxy on Windows, so that tab is hidden there
+    final vis = <int>[for (var i = 0; i < items.length; i++) if (!(Platform.isWindows && i == 2)) i];
+    final n = vis.length;
+    final pos = vis.indexOf(tab).clamp(0, n - 1);
     return Container(
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(32),
@@ -963,7 +988,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               AnimatedAlign(
                 duration: const Duration(milliseconds: 320),
                 curve: Curves.easeOutCubic,
-                alignment: AlignmentDirectional(-1 + 2 * tab / (n - 1), 0),
+                alignment: AlignmentDirectional(-1 + 2 * pos / (n - 1), 0),
                 child: FractionallySizedBox(
                   widthFactor: 1 / n,
                   heightFactor: 1,
@@ -979,7 +1004,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 ),
               ),
               Row(children: [
-                for (var i = 0; i < n; i++)
+                for (final i in vis)
                   Expanded(
                     child: GestureDetector(
                       behavior: HitTestBehavior.opaque,
