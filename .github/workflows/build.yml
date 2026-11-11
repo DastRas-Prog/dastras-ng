@@ -157,3 +157,80 @@ jobs:
             DastRas NG build ${{ github.run_number }}
           files: dist/*.apk
           make_latest: true
+
+  windows:
+    needs: build
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Build the Windows app
+        shell: bash
+        run: |
+          flutter config --enable-windows-desktop
+          flutter create --org com.dastras --project-name ng --platforms windows win_build
+          cd win_build
+          rm -rf test lib analysis_options.yaml
+          cp ../pubspec.yaml .
+          cp -r ../lib .
+          mkdir -p assets
+          cp ../assets/logo.png assets/
+          : > assets/geoip.dat
+          : > assets/geosite.dat
+          cp ../windows_overlay/app_icon.ico windows/runner/resources/app_icon.ico
+          sed -i 's/Win32Window::Size size(1280, 720);/Win32Window::Size size(440, 880);/' windows/runner/main.cpp
+          sed -i 's/L"ng"/L"DastRas NG"/' windows/runner/main.cpp
+          sed -i 's/set(BINARY_NAME "ng")/set(BINARY_NAME "DastRas-NG")/' windows/CMakeLists.txt
+          # the Windows app keeps its data in plain preferences, so the native secure-storage plugin is replaced by an empty stub
+          mkdir -p stubs/flutter_secure_storage/lib
+          cat > stubs/flutter_secure_storage/pubspec.yaml << 'STUB'
+          name: flutter_secure_storage
+          version: 9.2.4
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+          STUB
+          cat > stubs/flutter_secure_storage/lib/flutter_secure_storage.dart << 'STUB'
+          class FlutterSecureStorage {
+            const FlutterSecureStorage();
+            Future<String?> read({required String key}) async => null;
+            Future<void> write({required String key, required String? value}) async {}
+          }
+          STUB
+          printf '\ndependency_overrides:\n  flutter_secure_storage:\n    path: stubs/flutter_secure_storage\n' >> pubspec.yaml
+          flutter pub get
+          flutter build windows --release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Add Xray core and geo data, then zip
+        shell: pwsh
+        run: |
+          $rel = "win_build/build/windows/x64/runner/Release"
+          New-Item -ItemType Directory -Force "$rel/xray" | Out-Null
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile xray.zip
+          Expand-Archive xray.zip -DestinationPath xray_tmp -Force
+          Copy-Item xray_tmp/xray.exe "$rel/xray/xray.exe"
+          foreach ($f in 'geoip.dat','geosite.dat') {
+            try { Invoke-WebRequest "https://github.com/Chocolate4U/Iran-v2ray-rules/releases/latest/download/$f" -OutFile "$rel/xray/$f" -ErrorAction Stop }
+            catch { Invoke-WebRequest "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/$f" -OutFile "$rel/xray/$f" }
+          }
+          Copy-Item $rel DastRas-NG -Recurse
+          Compress-Archive -Path DastRas-NG -DestinationPath DastRas-NG-windows.zip -Force
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DastRas-NG-windows
+          path: DastRas-NG-windows.zip
+
+      - name: Add the Windows zip to the release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          files: DastRas-NG-windows.zip
