@@ -2,7 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
-import 'dart:ui' show FontFeature, ImageFilter;
+import 'dart:ui' show AppExitResponse, FontFeature, ImageFilter;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
