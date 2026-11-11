@@ -8,8 +8,8 @@
 
 <br/>
 
-[![Release](https://img.shields.io/github/v/release/mojyrayzor-prog/dastras-ng?label=release&color=3563E9&style=for-the-badge)](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest)
-[![Downloads](https://img.shields.io/github/downloads/mojyrayzor-prog/dastras-ng/total?color=0FA968&style=for-the-badge)](https://github.com/mojyrayzor-prog/dastras-ng/releases)
+[![Release](https://img.shields.io/github/v/release/DastRas-Prog/dastras-ng?label=release&color=3563E9&style=for-the-badge)](https://github.com/DastRas-Prog/dastras-ng/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/DastRas-Prog/dastras-ng/total?color=0FA968&style=for-the-badge)](https://github.com/DastRas-Prog/dastras-ng/releases)
 [![Telegram](https://img.shields.io/badge/Telegram-@dastras-26A5E4?logo=telegram&logoColor=white&style=for-the-badge)](https://t.me/dastras)
 ![Platform](https://img.shields.io/badge/Android-7.0%2B-3DDC84?logo=android&logoColor=white&style=for-the-badge)
 ![Core](https://img.shields.io/badge/Core-Xray-000000?style=for-the-badge)
@@ -43,15 +43,15 @@
 
 ### 📥 Download
 
-Get the newest version from the **[Releases page](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest)**.
+Get the newest version from the **[Releases page](https://github.com/DastRas-Prog/dastras-ng/releases/latest)**.
 
 | File | For |
 |---|---|
-| [`app-arm64-v8a-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-arm64-v8a-release.apk) | Almost all modern phones (recommended) |
-| [`app-armeabi-v7a-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | Older 32-bit phones |
-| [`app-x86_64-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | Emulators, some tablets |
-| [`app-universal-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-universal-release.apk) | Works everywhere (bigger file) |
-| [`DastRas-NG-windows.zip`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **Windows 10 / 11** (extract, then run `DastRas-NG.exe`) |
+| [`app-arm64-v8a-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-arm64-v8a-release.apk) | Almost all modern phones (recommended) |
+| [`app-armeabi-v7a-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | Older 32-bit phones |
+| [`app-x86_64-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | Emulators, some tablets |
+| [`app-universal-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-universal-release.apk) | Works everywhere (bigger file) |
+| [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **Windows 10 / 11** (extract, then run `DastRas-NG.exe`) |
 
 > **First install:** Android may show a warning for apps installed outside Google Play. Tap **Install anyway**.
 
@@ -125,15 +125,15 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 
 ### 📥 دانلود
 
-آخرین نسخه را از **[صفحه‌ی Releases](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest)** بگیرید.
+آخرین نسخه را از **[صفحه‌ی Releases](https://github.com/DastRas-Prog/dastras-ng/releases/latest)** بگیرید.
 
 | فایل | مناسب برای |
 |---|---|
-| [`app-arm64-v8a-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-arm64-v8a-release.apk) | تقریباً همه‌ی گوشی‌های امروزی (پیشنهادی) |
-| [`app-armeabi-v7a-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | گوشی‌های قدیمی ۳۲ بیتی |
-| [`app-x86_64-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | شبیه‌ساز و بعضی تبلت‌ها |
-| [`app-universal-release.apk`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/app-universal-release.apk) | روی همه‌ی گوشی‌ها کار می‌کند (حجم بیشتر) |
-| [`DastRas-NG-windows.zip`](https://github.com/mojyrayzor-prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **ویندوز ۱۰ و ۱۱** (استخراج کنید و `DastRas-NG.exe` را اجرا کنید) |
+| [`app-arm64-v8a-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-arm64-v8a-release.apk) | تقریباً همه‌ی گوشی‌های امروزی (پیشنهادی) |
+| [`app-armeabi-v7a-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | گوشی‌های قدیمی ۳۲ بیتی |
+| [`app-x86_64-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | شبیه‌ساز و بعضی تبلت‌ها |
+| [`app-universal-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-universal-release.apk) | روی همه‌ی گوشی‌ها کار می‌کند (حجم بیشتر) |
+| [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **ویندوز ۱۰ و ۱۱** (استخراج کنید و `DastRas-NG.exe` را اجرا کنید) |
 
 > **نصب اول:** اندروید برای برنامه‌هایی که از گوگل‌پلی نصب نشده‌اند هشدار می‌دهد. گزینه‌ی **Install anyway** را بزنید.
 

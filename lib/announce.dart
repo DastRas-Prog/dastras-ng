@@ -3,8 +3,8 @@ import 'dart:convert';
 /// Where the app looks for messages to the customers. Edit announcements.json in the
 /// GitHub repo (see README) to publish a new message.
 const kAnnounceUrls = [
-  'https://raw.githubusercontent.com/mojyrayzor-prog/dastras-ng/main/announcements.json',
-  'https://cdn.jsdelivr.net/gh/mojyrayzor-prog/dastras-ng@main/announcements.json',
+  'https://raw.githubusercontent.com/DastRas-Prog/dastras-ng/main/announcements.json',
+  'https://cdn.jsdelivr.net/gh/DastRas-Prog/dastras-ng@main/announcements.json',
 ];
 
 /// Opened by the "update" message the app adds to the inbox when a new version exists.

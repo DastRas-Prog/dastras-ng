@@ -11,8 +11,8 @@ import 'theme.dart';
 
 /// Injected by the build (GitHub run number). 0 = local/dev build.
 const int kBuild = int.fromEnvironment('BUILD_NUMBER', defaultValue: 0);
-const String kVersion = '2.0.0';
-const String kRepo = 'mojyrayzor-prog/dastras-ng';
+const String kVersion = '2.0.1';
+const String kRepo = 'DastRas-Prog/dastras-ng';
 
 class UpdateInfo {
   final int build;
