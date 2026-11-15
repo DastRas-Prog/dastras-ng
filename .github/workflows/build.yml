@@ -65,6 +65,7 @@ jobs:
           cp -r ../lib .
           mkdir -p assets android/app/libs
           cp ../assets/geoip.dat ../assets/geosite.dat ../assets/logo.png assets/
+          cp -r ../assets/flags assets/
           cp ../aar/libXray.aar android/app/libs/
           rm -rf android/app/src/main/res/mipmap-anydpi*
           cp -r ../android_overlay/res/* android/app/src/main/res/
@@ -183,6 +184,7 @@ jobs:
           cp -r ../lib .
           mkdir -p assets
           cp ../assets/logo.png assets/
+          cp -r ../assets/flags assets/
           : > assets/geoip.dat
           : > assets/geosite.dat
           cp ../windows_overlay/app_icon.ico windows/runner/resources/app_icon.ico
@@ -223,14 +225,28 @@ jobs:
           Copy-Item $rel DastRas-NG -Recurse
           Compress-Archive -Path DastRas-NG -DestinationPath DastRas-NG-windows.zip -Force
 
+      - name: Build the installer (Inno Setup)
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          Copy-Item windows_overlay/installer.iss installer.iss
+          Copy-Item windows_overlay/app_icon.ico app_icon.ico
+          $iscc = Join-Path ${env:ProgramFiles(x86)} "Inno Setup 6\ISCC.exe"
+          & $iscc "/DMyAppVersion=2.1.${{ github.run_number }}" "/DSourceDir=$PWD\DastRas-NG" installer.iss
+          if ($LASTEXITCODE -ne 0) { throw "Inno Setup failed" }
+
       - uses: actions/upload-artifact@v4
         with:
           name: DastRas-NG-windows
-          path: DastRas-NG-windows.zip
+          path: |
+            DastRas-NG-windows.zip
+            Output/DastRas-NG-Setup.exe
 
       - name: Add the Windows zip to the release
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: build-${{ github.run_number }}
-          files: DastRas-NG-windows.zip
+          files: |
+            DastRas-NG-windows.zip
+            Output/DastRas-NG-Setup.exe
