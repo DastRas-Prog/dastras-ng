@@ -32,8 +32,12 @@
 | 🚀 **Smart auto-connect** | Tests every server (latency and stability) before connecting and picks the best one |
 | 🔁 **Seamless server switch** | Tap another server while connected and it reconnects by itself |
 | 📊 **Live speed** | Real-time download / upload, session usage, graph and a live notification with a *Disconnect* button |
-| 🧩 **Per-app proxy** | Send only the apps you choose through the VPN, or everything except them. Chosen apps are shown first |
+| 🧩 **Per-app proxy** | Send only the apps you choose through the VPN, or everything except them. Chosen apps are shown first, and system apps can be selected too |
 | 🔗 **Subscriptions** | Links and JSON subscriptions, auto-refresh, usage bar, copy / share the link |
+| 🔌 **Many protocols** | VLESS, VMess, Trojan, Shadowsocks, Hysteria2, WireGuard, SOCKS · WS, gRPC, HTTPUpgrade, XHTTP, TCP, KCP · TLS and Reality |
+| 📡 **Shows your connection** | Hamrah-e-Aval, Irancell, Rightel, Wi-Fi and the provider behind it (ADSL / fiber companies) |
+| 🗂 **Separate subscriptions** | Every subscription has its own section with usage and expiry; custom configs are kept apart |
+| 🛡 **Reads filtered subscription links** | Falls back to DNS-over-HTTPS and a direct IP connection, and uses the VPN itself when it is on |
 | 📷 **QR codes** | Scan a QR with the camera to add a subscription or config, and show a QR of your links |
 | ⏰ **Account alerts** | Warns when data is almost gone or the account is about to expire, with one tap to message support on Telegram |
 | 🔄 **In-app updates** | Reads new releases from GitHub, tells you in the inbox, shows the changelog and installs the update |
@@ -51,13 +55,14 @@ Get the newest version from the **[Releases page](https://github.com/DastRas-Pro
 | [`app-armeabi-v7a-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | Older 32-bit phones |
 | [`app-x86_64-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | Emulators, some tablets |
 | [`app-universal-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-universal-release.apk) | Works everywhere (bigger file) |
-| [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **Windows 10 / 11** (extract, then run `DastRas-NG.exe`) |
+| [`DastRas-NG-Setup.exe`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-Setup.exe) | **Windows 10 / 11 (64-bit) installer** with Start-menu and desktop shortcuts |
+| [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | Windows portable version (extract, then run `DastRas-NG.exe`) |
 
 > **First install:** Android may show a warning for apps installed outside Google Play. Tap **Install anyway**.
 
 ### 🖥 Windows
 
-The Windows version sets the **system proxy** (like v2rayN), so browsers and most apps use the VPN. It restores your previous proxy settings when you disconnect or close the app, picks free ports automatically and restarts the core if the connection silently dies. Some apps (games, Microsoft Store apps) ignore the system proxy.
+Requires **64-bit Windows 10 or 11**. The Windows version sets the **system proxy** (like v2rayN), so browsers and most apps use the VPN. It restores your previous proxy settings when you disconnect or close the app, picks free ports automatically and restarts the core if the connection silently dies. Some apps (games, Microsoft Store apps) ignore the system proxy.
 
 ### 🚀 Quick start
 
@@ -114,8 +119,12 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 | 🚀 **اتصال خودکار هوشمند** | قبل از اتصال همه‌ی سرورها از نظر تأخیر و پایداری تست می‌شوند و بهترین سرور انتخاب می‌شود |
 | 🔁 **تعویض بدون دردسر سرور** | وسط اتصال روی سرور دیگری بزنید، خودش دوباره وصل می‌شود |
 | 📊 **سرعت لحظه‌ای** | سرعت دانلود و آپلود، مصرف همین اتصال، نمودار و نوتیفیکیشن زنده با دکمه‌ی «قطع اتصال» |
-| 🧩 **پروکسی برنامه‌ها** | فقط برنامه‌های انتخابی یا همه به‌جز آن‌ها از VPN استفاده کنند. برنامه‌های انتخاب‌شده بالای لیست می‌آیند |
+| 🧩 **پروکسی برنامه‌ها** | فقط برنامه‌های انتخابی یا همه به‌جز آن‌ها از VPN استفاده کنند. برنامه‌های انتخاب‌شده بالای لیست می‌آیند و برنامه‌های سیستمی را هم می‌شود انتخاب کرد |
 | 🔗 **اشتراک‌ها** | لینک و ساب JSON، به‌روزرسانی خودکار، نوار حجم، کپی و اشتراک‌گذاری لینک |
+| 🔌 **پروتکل‌های متنوع** | VLESS، VMess، Trojan، Shadowsocks، Hysteria2، WireGuard، SOCKS ؛ انتقال WS، gRPC، HTTPUpgrade، XHTTP، TCP، KCP ؛ امنیت TLS و Reality |
+| 📡 **نمایش نوع اینترنت** | همراه اول، ایرانسل، رایتل، وای‌فای و شرکت ارائه‌دهنده (مخابرات، شاتل و ...) |
+| 🗂 **ساب‌های جدا** | هر ساب بخش جداگانه با حجم و انقضای خودش دارد و کانفیگ‌های دستی جدا نشان داده می‌شوند |
+| 🛡 **خواندن لینک ساب فیلترشده** | با DNS-over-HTTPS و اتصال مستقیم به IP، و در حالت اتصال از خود VPN استفاده می‌کند |
 | 📷 **کد QR** | با دوربین QR را اسکن کنید تا ساب یا کانفیگ اضافه شود، و از لینک‌هایتان QR بسازید |
 | ⏰ **هشدار اکانت** | وقتی حجم رو به اتمام است یا اکانت دارد تمام می‌شود هشدار می‌دهد و با یک لمس در تلگرام به پشتیبانی پیام می‌دهد |
 | 🔄 **به‌روزرسانی داخل برنامه** | نسخه‌ی جدید را از گیت‌هاب می‌خواند، در پیام‌ها خبر می‌دهد، تغییرات را نشان می‌دهد و نصب می‌کند |
@@ -133,13 +142,14 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 | [`app-armeabi-v7a-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-armeabi-v7a-release.apk) | گوشی‌های قدیمی ۳۲ بیتی |
 | [`app-x86_64-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | شبیه‌ساز و بعضی تبلت‌ها |
 | [`app-universal-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-universal-release.apk) | روی همه‌ی گوشی‌ها کار می‌کند (حجم بیشتر) |
-| [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | **ویندوز ۱۰ و ۱۱** (استخراج کنید و `DastRas-NG.exe` را اجرا کنید) |
+| [`DastRas-NG-Setup.exe`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-Setup.exe) | **نصب‌کننده‌ی ویندوز ۱۰ و ۱۱ (۶۴ بیتی)** همراه با شورتکات در منوی استارت و دسکتاپ |
+| [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | نسخه‌ی قابل حمل ویندوز (استخراج کنید و `DastRas-NG.exe` را اجرا کنید) |
 
 > **نصب اول:** اندروید برای برنامه‌هایی که از گوگل‌پلی نصب نشده‌اند هشدار می‌دهد. گزینه‌ی **Install anyway** را بزنید.
 
 ### 🖥 ویندوز
 
-نسخه‌ی ویندوز **پروکسی سیستم** را تنظیم می‌کند (مثل v2rayN)، پس مرورگرها و بیشتر برنامه‌ها از VPN استفاده می‌کنند. با قطع کردن یا بستن برنامه، تنظیمات قبلی پروکسی شما برگردانده می‌شود، پورت‌ها خودکار آزاد انتخاب می‌شوند و اگر اتصال بی‌صدا قطع شود هسته دوباره راه‌اندازی می‌شود. بعضی برنامه‌ها (بازی‌ها و برنامه‌های فروشگاه مایکروسافت) پروکسی سیستم را نادیده می‌گیرند.
+نیازمند **ویندوز ۱۰ یا ۱۱ (۶۴ بیتی)** است. نسخه‌ی ویندوز **پروکسی سیستم** را تنظیم می‌کند (مثل v2rayN)، پس مرورگرها و بیشتر برنامه‌ها از VPN استفاده می‌کنند. با قطع کردن یا بستن برنامه، تنظیمات قبلی پروکسی شما برگردانده می‌شود، پورت‌ها خودکار آزاد انتخاب می‌شوند و اگر اتصال بی‌صدا قطع شود هسته دوباره راه‌اندازی می‌شود. بعضی برنامه‌ها (بازی‌ها و برنامه‌های فروشگاه مایکروسافت) پروکسی سیستم را نادیده می‌گیرند.
 
 ### 🚀 شروع سریع
 

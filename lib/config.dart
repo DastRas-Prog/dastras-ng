@@ -54,6 +54,15 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
     }
   }
 
+  // lower latency and better throughput for small packets on TCP based transports
+  const tcpLike = {'tcp', 'ws', 'xhttp', 'grpc', 'httpupgrade', 'http'};
+  if (stream.isNotEmpty && tcpLike.contains((stream['network'] ?? 'tcp').toString())) {
+    final so = stream['sockopt'] is Map ? Map<String, dynamic>.from(stream['sockopt'] as Map) : <String, dynamic>{};
+    so.putIfAbsent('tcpNoDelay', () => true);
+    stream['sockopt'] = so;
+    proxy['streamSettings'] = stream;
+  }
+
   final sockNow = stream['sockopt'] is Map ? stream['sockopt'] as Map : const {};
   final serverTuned = s.panelTuning && sockNow['dialerProxy'] != null; // panel (e.g. Marzban) already set fragment/noise
 
@@ -89,7 +98,8 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
 
   // Mux is incompatible with XTLS Vision flows.
   final p = (proxy['protocol'] ?? '').toString();
-  if (s.mux && !proxy.containsKey('mux') && (p == 'vless' || p == 'vmess' || p == 'trojan') && _flow(proxy).isEmpty) {
+  if (s.mux && !proxy.containsKey('mux') && (p == 'vless' || p == 'vmess' || p == 'trojan') && _flow(proxy).isEmpty &&
+      !const {'xhttp', 'grpc', 'hysteria', 'kcp'}.contains((stream['network'] ?? 'tcp').toString())) {
     proxy['mux'] = {'enabled': true, 'concurrency': 8};
   }
 
@@ -97,8 +107,15 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
   if (!outbounds.any((o) => o['tag'] == 'block')) outbounds.add({'tag': 'block', 'protocol': 'blackhole'});
 
   final win = Platform.isWindows;
+  // Windows: choose programs by process name (works for programs that use the system proxy)
+  final names = <String>[
+    for (final n in s.perAppList) ...[n, if (!n.toLowerCase().endsWith('.exe')) '$n.exe']
+  ];
+  final winInclude = win && s.perAppMode == 'include' && s.perAppList.isNotEmpty;
+  final winExclude = win && s.perAppMode == 'exclude' && s.perAppList.isNotEmpty;
   final rules = <Map<String, dynamic>>[
     if (win) {'type': 'field', 'inboundTag': ['api'], 'outboundTag': 'api'},
+    if (winExclude) {'type': 'field', 'process': names, 'outboundTag': 'direct'},
     if (s.blockQuic)
       {'type': 'field', 'network': 'udp', 'port': '443', 'outboundTag': 'block'},
     if (s.blockAds)
@@ -108,6 +125,8 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
       {'type': 'field', 'domain': ['geosite:category-ir'], 'outboundTag': 'direct'},
       {'type': 'field', 'ip': ['geoip:ir'], 'outboundTag': 'direct'},
     ],
+    if (winInclude) {'type': 'field', 'process': names, 'outboundTag': 'proxy'},
+    if (winInclude) {'type': 'field', 'network': 'tcp,udp', 'outboundTag': 'direct'},
   ];
 
   final cfg = {

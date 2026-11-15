@@ -2,6 +2,26 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'pal.dart';
 
+/// Country flag image (Windows can not draw flag emoji, so images are bundled).
+class FlagIcon extends StatelessWidget {
+  final String? code;
+  final double size;
+  const FlagIcon(this.code, {super.key, this.size = 28});
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Icon(Icons.public_rounded, color: Pal.t3, size: size);
+    if (code == null) return fallback;
+    return Image.asset(
+      'assets/flags/$code.png',
+      width: size,
+      height: size,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => fallback,
+    );
+  }
+}
+
 class Logo extends StatelessWidget {
   final double size;
   const Logo({super.key, this.size = 40});

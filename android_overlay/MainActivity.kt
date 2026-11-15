@@ -122,7 +122,17 @@ class MainActivity : FlutterActivity() {
                         var plmn = ""
                         try {
                             val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-                            val caps = cm.getNetworkCapabilities(cm.activeNetwork)
+                            // prefer the real (non-VPN) network so this also works while the VPN is on
+                            var caps = cm.getNetworkCapabilities(cm.activeNetwork)
+                            for (n in cm.allNetworks) {
+                                val c = cm.getNetworkCapabilities(n) ?: continue
+                                if (c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_NOT_VPN) &&
+                                    c.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET)
+                                ) {
+                                    caps = c
+                                    break
+                                }
+                            }
                             if (caps != null) {
                                 type = when {
                                     caps.hasTransport(android.net.NetworkCapabilities.TRANSPORT_WIFI) ||
@@ -199,22 +209,27 @@ class MainActivity : FlutterActivity() {
 
     private fun listApps(): String {
         val pm = packageManager
-        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
-        val seen = HashSet<String>()
         val out = JSONArray()
-        for (ri in pm.queryIntentActivities(intent, 0)) {
-            val pkg = ri.activityInfo.packageName
+        val seen = HashSet<String>()
+        // every installed app, including system apps (needs QUERY_ALL_PACKAGES)
+        for (ai in pm.getInstalledApplications(0)) {
+            val pkg = ai.packageName
             if (pkg == packageName || !seen.add(pkg)) continue
-            val bmp = Bitmap.createBitmap(64, 64, Bitmap.Config.ARGB_8888)
-            val d = ri.loadIcon(pm)
-            d.setBounds(0, 0, 64, 64)
-            d.draw(Canvas(bmp))
+            val sys = (ai.flags and android.content.pm.ApplicationInfo.FLAG_SYSTEM) != 0
+            val bmp = Bitmap.createBitmap(48, 48, Bitmap.Config.ARGB_8888)
+            try {
+                val d = pm.getApplicationIcon(ai)
+                d.setBounds(0, 0, 48, 48)
+                d.draw(Canvas(bmp))
+            } catch (_: Throwable) {
+            }
             val os = ByteArrayOutputStream()
             bmp.compress(Bitmap.CompressFormat.PNG, 100, os)
             out.put(
                 JSONObject()
                     .put("pkg", pkg)
-                    .put("name", ri.loadLabel(pm).toString())
+                    .put("name", pm.getApplicationLabel(ai).toString())
+                    .put("sys", sys)
                     .put("icon", Base64.encodeToString(os.toByteArray(), Base64.NO_WRAP))
             )
         }

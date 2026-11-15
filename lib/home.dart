@@ -108,13 +108,16 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && ready) {
+      _detectNet();
       _checkClipboard();
       _checkAnn();
     }
   }
 
   Future<void> _init() async {
-    await store.load();
+    try {
+      await store.load().timeout(const Duration(seconds: 15));
+    } catch (_) {}
     if (Platform.isWindows) {
       await WinCore.cleanupStale(); // undo anything a crashed session left behind
       // closing the window must always restore the user's proxy settings
@@ -134,11 +137,14 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         }
       };
     }
-    status = await Core.status();
+    try {
+      status = await Core.status();
+    } catch (_) {}
     if (!mounted) return;
     setState(() => ready = true);
     timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
     _checkClipboard();
+    _detectNet();
     _checkWarn();
     if (_newDay) {
       _refreshSubs(silent: true);
@@ -151,6 +157,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       _maybeRefresh();
       _checkAnn();
       _checkAppUpdate();
+      _detectNet();
     });
     if (store.connectOnOpen && !running && !starting && (store.nodes.isNotEmpty || store.subs.isNotEmpty)) {
       _toggle();
@@ -286,6 +293,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } else {
       connectedAt = null;
     }
+    if (s == 'stopped' && status != 'stopped') _detectNet();
     if (s != status || s == 'running' || t.down != traffic.down || t.up != traffic.up) {
       setState(() {
         status = s;
@@ -465,35 +473,53 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           : null;
       final old = {for (final n in store.nodes) n.key: n};
       final all = <Node>[];
-      SubInfo? info;
-      String? title;
+      final failed = <String>[];
+      Object? firstErr;
       for (final url in store.subs) {
-        final r = await fetchAndParse(url, preferJson: store.panelTuning);
-        if (r.title != null && r.title!.trim().isNotEmpty) title ??= r.title!.trim();
-        for (final o in r.obs) {
-          final n = Node(o, 'sub');
-          final p = old[n.key];
-          if (p != null) {
-            n.tcp = p.tcp;
-            n.real = p.real;
-            n.stat = p.stat;
-            n.tested = p.tested;
+        try {
+          final r = await fetchAndParse(url, preferJson: store.panelTuning);
+          for (final o in r.obs) {
+            final n = Node(o, 'sub')..subUrl = url;
+            final p = old[n.key];
+            if (p != null) {
+              n.tcp = p.tcp;
+              n.real = p.real;
+              n.stat = p.stat;
+              n.tested = p.tested;
+            }
+            all.add(n);
           }
-          all.add(n);
+          final meta = <String, dynamic>{'t': (r.title ?? '').trim().isNotEmpty ? r.title!.trim() : store.titleFor(url)};
+          if (r.info != null) {
+            meta['u'] = r.info!.used;
+            meta['tot'] = r.info!.total;
+            meta['e'] = r.info!.expire;
+          }
+          store.subMeta[url] = meta;
+        } catch (e) {
+          failed.add(url);
+          firstErr ??= e;
         }
-        if (r.info != null) info = r.info;
       }
-      store.nodes = [...store.nodes.where((n) => n.src != 'sub'), ...all];
+      if (failed.length == store.subs.length && firstErr != null) throw firstErr;
+      // servers of a subscription that could not be refreshed stay as they were
+      final firstSub = store.subs.isEmpty ? '' : store.subs.first;
+      store.nodes = [
+        ...store.nodes.where((n) => n.src != 'sub' || failed.contains(n.subUrl ?? firstSub)),
+        ...all,
+      ];
       final idx = selKey == null ? -1 : store.nodes.indexWhere((n) => n.key == selKey);
       store.selected = idx >= 0 ? idx : 0;
-      store.info = info;
-      if (title != null) store.subTitle = title;
       store.updatedMs = DateTime.now().millisecondsSinceEpoch;
       await store.save();
       _checkWarn();
-      if (!silent) _toast('${tr('sub_updated')} (${all.length} ${tr('configs_n')})');
+      if (!silent) {
+        _toast(failed.isEmpty
+            ? '${tr('sub_updated')} (${all.length} ${tr('configs_n')})'
+            : '${tr('sub_updated')} · ${failed.length} ${tr('sub_failed')}');
+      }
     } catch (e) {
-      if (!silent) _toast('${tr('error')}: $e');
+      if (!silent) _toast('${tr('error')}: ${_friendly(e)}');
     } finally {
       _refreshing = false;
       if (mounted) setState(() => busy = false);
@@ -504,6 +530,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     text = text.trim();
     if (text.isEmpty) return;
     final isSub = !text.contains('\n') && (text.startsWith('http://') || text.startsWith('https://'));
+    final host = isSub ? (Uri.tryParse(text)?.host.toLowerCase() ?? '') : '';
+    if (isSub && const ['t.me', 'telegram.me', 'telegram.dog', 'instagram.com', 'www.instagram.com', 'youtube.com', 'www.youtube.com', 'youtu.be'].contains(host)) {
+      _toast(tr('not_a_sub'));
+      return;
+    }
     if (isSub && text.startsWith('http://') && store.httpsOnly) {
       _toast(tr('https_only_warn'));
       return;
@@ -524,7 +555,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         _toast('${obs.length} ${tr('added_n')}');
       }
     } catch (e) {
-      _toast('${tr('error')}: $e');
+      _toast('${tr('error')}: ${_friendly(e)}');
     } finally {
       if (mounted) setState(() => busy = false);
     }
@@ -532,6 +563,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Future<void> _ping() async {
     if (store.nodes.isEmpty) return;
+    if ((running || starting) && !Platform.isWindows) {
+      _toast(tr('disconnect_first'));
+      return;
+    }
     setState(() => busy = true);
     try {
       final selKey = store.nodes[store.selected].key;
@@ -648,6 +683,79 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           ]),
         ),
       ),
+    );
+  }
+
+  // ---------- connection type (operator) ----------
+
+  String _netLabel = '';
+  String? _wifiIsp;
+  DateTime _ispAt = DateTime.fromMillisecondsSinceEpoch(0);
+
+  String _friendly(Object e) {
+    final t = e.toString();
+    if (t.contains('SocketException') ||
+        t.contains('Network is unreachable') ||
+        t.contains('Failed host lookup') ||
+        t.contains('TimeoutException') ||
+        t.contains('HandshakeException') ||
+        t.contains('unreachable')) {
+      return tr('sub_unreachable');
+    }
+    if (t.contains('not a subscription')) return tr('sub_not_sub');
+    return t;
+  }
+
+  Future<void> _detectNet() async {
+    if (!store.showNet) {
+      if (_netLabel.isNotEmpty && mounted) setState(() => _netLabel = '');
+      return;
+    }
+    try {
+      final n = await Core.network();
+      String label;
+      if (n.type == 'cellular') {
+        switch (n.plmn) {
+          case '43211':
+            label = tr('net_mci');
+            break;
+          case '43235':
+            label = tr('net_irancell');
+            break;
+          case '43220':
+            label = tr('net_rightel');
+            break;
+          default:
+            label = tr('net_cell');
+        }
+      } else if (n.type == 'none') {
+        label = tr('net_none');
+      } else {
+        final base = n.type == 'wifi' && !Platform.isWindows ? tr('net_wifi') : tr('net_other');
+        label = _wifiIsp == null ? base : '$base · $_wifiIsp';
+        // with the VPN on we would see the VPN server, so only ask while it is off
+        if (!running && !starting && DateTime.now().difference(_ispAt).inMinutes >= 5) {
+          _ispAt = DateTime.now();
+          final isp = await lookupIsp();
+          if (isp != null) {
+            _wifiIsp = isp;
+            label = '$base · $isp';
+          }
+        }
+      }
+      if (mounted && label != _netLabel) setState(() => _netLabel = label);
+    } catch (_) {}
+  }
+
+  Widget _netChip() {
+    if (_netLabel.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
+        const SizedBox(width: 6),
+        Text('${tr('network_now')}: $_netLabel', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+      ]),
     );
   }
 
@@ -788,6 +896,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                         tooltip: tr('delete'),
                         onPressed: () async {
                           store.subs.remove(url);
+          store.subMeta.remove(url);
                           store.nodes.removeWhere((n) => n.src == 'sub');
                           if (store.selected >= store.nodes.length) store.selected = 0;
                           await store.save();
@@ -964,8 +1073,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       (Icons.settings_rounded, tr('tab_settings')),
     ];
     final unread = _unread;
-    // there is no per-app proxy on Windows, so that tab is hidden there
-    final vis = <int>[for (var i = 0; i < items.length; i++) if (!(Platform.isWindows && i == 2)) i];
+    final vis = <int>[for (var i = 0; i < items.length; i++) i];
     final n = vis.length;
     final pos = vis.indexOf(tab).clamp(0, n - 1);
     return Container(
@@ -1114,6 +1222,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         ),
       const SizedBox(height: 12),
       _modeToggle(),
+      _netChip(),
       const SizedBox(height: 12),
       if (running) _speedCard(),
       if (running) const SizedBox(height: 10),
@@ -1194,7 +1303,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                     height: 42,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(12)),
-                    child: n.flag != null ? Text(n.flag!, style: const TextStyle(fontSize: 24)) : Icon(Icons.public_rounded, color: Pal.t3),
+                    child: FlagIcon(n.countryCode, size: 30),
                   ),
                   const SizedBox(width: 12),
                   Expanded(
@@ -1270,23 +1379,93 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   // ----- tab 1: servers / subscription -----
 
   Widget _tabServers() {
+    // one section per subscription, then the configs added by hand
+    final sections = <(String, String?, List<int>)>[];
+    final firstSub = store.subs.isEmpty ? null : store.subs.first;
+    for (final url in store.subs) {
+      final idx = <int>[
+        for (var i = 0; i < store.nodes.length; i++)
+          if (store.nodes[i].src == 'sub' && (store.nodes[i].subUrl == url || (store.nodes[i].subUrl == null && url == firstSub))) i
+      ];
+      final t = store.titleFor(url);
+      sections.add((t.isEmpty ? '${tr('subscription')} ${sections.length + 1}' : t, url, idx));
+    }
+    final custom = <int>[
+      for (var i = 0; i < store.nodes.length; i++)
+        if (store.nodes[i].src == 'manual') i
+    ];
+    if (custom.isNotEmpty) sections.add((tr('custom_configs'), null, custom));
+    final items = <Widget>[];
+    for (final sec in sections) {
+      items.add(_sectionHeader(sec.$1, sec.$2, sec.$3.length));
+      for (final i in sec.$3) {
+        items.add(_nodeCard(i));
+      }
+    }
     return RefreshIndicator(
       onRefresh: () => _refreshSubs(),
       child: CustomScrollView(physics: const AlwaysScrollableScrollPhysics(), slivers: [
-      SliverToBoxAdapter(
-        child: Column(children: [
-          const SizedBox(height: 10),
-          _sheetHeader(),
-          if (busy) const LinearProgressIndicator(minHeight: 2),
-          _infoBar(),
+        SliverToBoxAdapter(
+          child: Column(children: [
+            const SizedBox(height: 10),
+            _sheetHeader(),
+            if (busy) const LinearProgressIndicator(minHeight: 2),
+          ]),
+        ),
+        if (store.nodes.isEmpty)
+          SliverToBoxAdapter(child: _emptyState())
+        else
+          SliverList(delegate: SliverChildListDelegate(items)),
+        const SliverToBoxAdapter(child: SizedBox(height: 110)),
+      ]),
+    );
+  }
+
+  Widget _sectionHeader(String title, String? url, int count) {
+    final info = url == null ? null : store.infoFor(url);
+    final total = info?.total ?? 0;
+    final exp = (info != null && info.expire > 0) ? fmtDate(DateTime.fromMillisecondsSinceEpoch(info.expire * 1000)) : null;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Icon(url == null ? Icons.tune_rounded : Icons.cloud_rounded, size: 18, color: Pal.cyan),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Pal.t1)),
+          ),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: Pal.cardBorder)),
+            child: Text('$count', style: TextStyle(fontSize: 12.5, color: Pal.t2)),
+          ),
         ]),
-      ),
-      if (store.nodes.isEmpty)
-        SliverToBoxAdapter(child: _emptyState())
-      else
-        SliverList.builder(itemCount: store.nodes.length, itemBuilder: (_, i) => _nodeCard(i)),
-      const SliverToBoxAdapter(child: SizedBox(height: 110)),
-    ]));
+        if (info != null) ...[
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(6),
+            child: LinearProgressIndicator(
+              minHeight: 6,
+              value: total > 0 ? (info.used / total).clamp(0.0, 1.0) : 0.0,
+              backgroundColor: Pal.card,
+              color: Pal.accent,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Directionality(
+            textDirection: TextDirection.ltr,
+            child: Row(children: [
+              Text('${fmtBytes(info.used)} / ${total > 0 ? fmtBytes(total) : '∞'}', style: TextStyle(fontSize: 12.5, color: Pal.t2)),
+              const Spacer(),
+              if (exp != null) Text('${tr('expires')}: $exp', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+            ]),
+          ),
+        ],
+      ]),
+    );
   }
 
   Widget _banner({required IconData icon, required String text, required String action, required VoidCallback onAction, required VoidCallback onClose, Color? tint}) {
@@ -1386,7 +1565,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Widget _sheetHeader() {
     final upd = store.updatedMs == 0 ? null : DateTime.fromMillisecondsSinceEpoch(store.updatedMs);
-    final title = store.subTitle.isNotEmpty ? store.subTitle : tr('subscription');
+    final title = tr('tab_servers');
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 2, 4, 2),
       child: Row(children: [
@@ -1435,7 +1614,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
               store.nodes = [];
               store.subs = [];
               store.selected = 0;
-              store.info = null;
               store.subTitle = '';
               store.updatedMs = 0;
               await store.save();
@@ -1525,7 +1703,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                 height: 42,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(12)),
-                child: n.flag != null ? Text(n.flag!, style: const TextStyle(fontSize: 24)) : Icon(Icons.public_rounded, color: Pal.t3),
+                child: FlagIcon(n.countryCode, size: 30),
               ),
               const SizedBox(width: 12),
               Expanded(

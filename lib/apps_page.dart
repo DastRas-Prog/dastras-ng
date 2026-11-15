@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import 'core.dart';
@@ -51,7 +54,7 @@ class _AppsPageState extends State<AppsPage> {
   Widget build(BuildContext context) {
     return Tr((context) {
       final list = (apps ?? [])
-          .where((a) => q.isEmpty || a.name.toLowerCase().contains(q.toLowerCase()) || a.pkg.contains(q))
+          .where((a) => (widget.store.showSystemApps || !a.system) && (q.isEmpty || a.name.toLowerCase().contains(q.toLowerCase()) || a.pkg.contains(q)))
           .toList();
       list.sort((a, b) {
         final x = sel.contains(a.pkg) ? 0 : 1;
@@ -114,6 +117,48 @@ class _AppsPageState extends State<AppsPage> {
                   ),
                 ),
               ),
+              if (Platform.isWindows)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 16, 8),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Text(tr('win_apps_note'), style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+                    const SizedBox(height: 8),
+                    TextField(
+                      decoration: InputDecoration(
+                        hintText: tr('add_process'),
+                        isDense: true,
+                        filled: true,
+                        fillColor: Pal.card,
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(14), borderSide: BorderSide.none),
+                      ),
+                      onSubmitted: (v) async {
+                        final n = v.trim().replaceAll(RegExp(r'\.exe$', caseSensitive: false), '');
+                        if (n.isEmpty) return;
+                        setState(() {
+                          sel.add(n);
+                          if (!(apps ?? []).any((a) => a.pkg.toLowerCase() == n.toLowerCase())) {
+                            apps = [...?apps, AppInfo(n, n, Uint8List(0))];
+                          }
+                        });
+                        await _save();
+                      },
+                    ),
+                  ]),
+                ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: FilterChip(
+                    label: Text(Platform.isWindows ? tr('show_bg') : tr('show_system')),
+                    selected: widget.store.showSystemApps,
+                    onSelected: (v) async {
+                      setState(() => widget.store.showSystemApps = v);
+                      await widget.store.save();
+                    },
+                  ),
+                ),
+              ),
               Expanded(
                 child: apps == null
                     ? const Center(child: CircularProgressIndicator())
@@ -137,10 +182,17 @@ class _AppsPageState extends State<AppsPage> {
                             },
                             secondary: ClipRRect(
                               borderRadius: BorderRadius.circular(10),
-                              child: Image.memory(a.icon, width: 42, height: 42, gaplessPlayback: true),
+                              child: a.icon.isEmpty
+                                  ? Container(
+                                      width: 42,
+                                      height: 42,
+                                      color: Pal.card,
+                                      child: Icon(Icons.apps_rounded, color: Pal.t3),
+                                    )
+                                  : Image.memory(a.icon, width: 42, height: 42, gaplessPlayback: true),
                             ),
                             title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text(a.pkg,
+                            subtitle: Text('${a.system ? '${Platform.isWindows ? tr('bg_tag') : tr('system_tag')} · ' : ''}${a.pkg}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontSize: 11.5, color: Pal.t4)),

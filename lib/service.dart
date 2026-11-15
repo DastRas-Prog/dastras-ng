@@ -1,9 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' show BytesBuilder;
 import 'dart:math' as math;
 import 'package:http/http.dart' as http;
 import 'core.dart';
+import 'lang.dart';
 import 'models.dart';
+import 'share_links.dart';
 
 /// Latency test targets for "Real" mode.
 const kTestUrls = <String, String>{
@@ -29,14 +32,22 @@ Future<List<Map<String, dynamic>>> convert(String text) async {
     final j = _fromJson(t);
     if (j.isNotEmpty) return j;
   }
-  final r = await Core.invoke('convertShareLinksToXrayJson', {'text': text});
-  if (r['success'] != true) {
-    throw Exception((r['error'] ?? 'convert failed').toString());
+  // 1) the native converter, 2) the built-in parser for every link the converter skipped
+  var viaCore = <Map<String, dynamic>>[];
+  try {
+    final r = await Core.invoke('convertShareLinksToXrayJson', {'text': text});
+    final data = r['data'];
+    final list = (r['success'] == true && data is Map ? data['outbounds'] : null) as List?;
+    if (list != null) viaCore = list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  } catch (_) {}
+  String keyOf(Map<String, dynamic> o) => '${o['protocol']}|${Node(o, 'x').address}';
+  final have = {for (final o in viaCore) keyOf(o)};
+  final out = [...viaCore];
+  for (final o in parseShareText(text)) {
+    if (!have.contains(keyOf(o))) out.add(o);
   }
-  final data = r['data'];
-  final list = (data is Map ? data['outbounds'] : null) as List?;
-  if (list == null || list.isEmpty) throw Exception('no usable config');
-  return list.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  if (out.isEmpty) throw Exception('no usable config');
+  return out;
 }
 
 /// Helper outbounds (fragment, noise, chained proxies...) that [chosen] depends on
@@ -114,15 +125,141 @@ String? _decodeTitle(String? h) {
   return h;
 }
 
+class _Resp {
+  final int statusCode;
+  final String body;
+  final Map<String, String> headers;
+  _Resp(this.statusCode, this.body, this.headers);
+}
+
+/// Normal request first; if the address is blocked or its DNS is poisoned, resolve the name over
+/// DNS-over-HTTPS and talk to the real IP directly (the certificate is still checked for the real name).
+Future<_Resp> _get(String url, String ua, {int depth = 0}) async {
+  Object? first;
+  try {
+    final r = await http.get(Uri.parse(url), headers: {'User-Agent': ua}).timeout(const Duration(seconds: 12));
+    return _Resp(r.statusCode, r.body, r.headers);
+  } catch (e) {
+    first = e;
+  }
+  try {
+    return await _getViaDoh(url, ua, depth);
+  } catch (_) {}
+  throw first ?? Exception('unreachable');
+}
+
+Future<_Resp> _getViaDoh(String url, String ua, int depth) async {
+  final u = Uri.parse(url);
+  final https = u.scheme == 'https';
+  final port = u.hasPort ? u.port : (https ? 443 : 80);
+  final ips = await _doh(u.host);
+  if (ips.isEmpty) throw Exception('dns');
+  Object? last;
+  for (final ip in ips.take(3)) {
+    try {
+      var s = await Socket.connect(ip, port, timeout: const Duration(seconds: 8));
+      if (https) s = await SecureSocket.secure(s, host: u.host);
+      final path = (u.path.isEmpty ? '/' : u.path) + (u.hasQuery ? '?${u.query}' : '');
+      s.write('GET $path HTTP/1.1\r\nHost: ${u.host}${u.hasPort ? ':${u.port}' : ''}\r\n'
+          'User-Agent: $ua\r\nAccept: */*\r\nAccept-Encoding: identity\r\nConnection: close\r\n\r\n');
+      await s.flush();
+      final bytes = BytesBuilder(copy: false);
+      await for (final c in s.timeout(const Duration(seconds: 20))) {
+        bytes.add(c);
+      }
+      s.destroy();
+      final r = _parseRaw(bytes.takeBytes());
+      final loc = r.headers['location'];
+      if ({301, 302, 307, 308}.contains(r.statusCode) && loc != null && depth < 3) {
+        return _get(u.resolve(loc).toString(), ua, depth: depth + 1);
+      }
+      return r;
+    } catch (e) {
+      last = e;
+    }
+  }
+  throw last ?? Exception('unreachable');
+}
+
+Future<List<String>> _doh(String host) async {
+  const urls = [
+    'https://1.1.1.1/dns-query?name=%s&type=A',
+    'https://8.8.8.8/resolve?name=%s&type=A',
+    'https://dns.google/resolve?name=%s&type=A',
+  ];
+  for (final t in urls) {
+    try {
+      final r = await http
+          .get(Uri.parse(t.replaceFirst('%s', host)), headers: {'accept': 'application/dns-json'})
+          .timeout(const Duration(seconds: 6));
+      if (r.statusCode != 200) continue;
+      final j = jsonDecode(r.body) as Map;
+      final ips = <String>[
+        for (final a in (j['Answer'] as List? ?? const []))
+          if (a is Map && a['type'] == 1) '${a['data']}'
+      ];
+      if (ips.isNotEmpty) return ips;
+    } catch (_) {}
+  }
+  return [];
+}
+
+_Resp _parseRaw(List<int> b) {
+  var idx = -1;
+  for (var k = 0; k + 3 < b.length; k++) {
+    if (b[k] == 13 && b[k + 1] == 10 && b[k + 2] == 13 && b[k + 3] == 10) {
+      idx = k;
+      break;
+    }
+  }
+  if (idx < 0) throw Exception('bad response');
+  final head = utf8.decode(b.sublist(0, idx), allowMalformed: true).split('\r\n');
+  final parts = head.first.split(' ');
+  final status = parts.length > 1 ? (int.tryParse(parts[1]) ?? 0) : 0;
+  final headers = <String, String>{};
+  for (final l in head.skip(1)) {
+    final c = l.indexOf(':');
+    if (c > 0) headers[l.substring(0, c).trim().toLowerCase()] = l.substring(c + 1).trim();
+  }
+  var body = b.sublist(idx + 4);
+  if ((headers['transfer-encoding'] ?? '').toLowerCase().contains('chunked')) body = _dechunk(body);
+  return _Resp(status, utf8.decode(body, allowMalformed: true), headers);
+}
+
+List<int> _dechunk(List<int> b) {
+  final out = <int>[];
+  var i = 0;
+  while (i < b.length) {
+    var e = i;
+    while (e + 1 < b.length && !(b[e] == 13 && b[e + 1] == 10)) {
+      e++;
+    }
+    if (e + 1 >= b.length) break;
+    final size = int.tryParse(utf8.decode(b.sublist(i, e)).split(';').first.trim(), radix: 16) ?? 0;
+    if (size == 0) break;
+    final start = e + 2;
+    final end = start + size;
+    if (end > b.length) {
+      out.addAll(b.sublist(start));
+      break;
+    }
+    out.addAll(b.sublist(start, end));
+    i = end + 2;
+  }
+  return out;
+}
+
 Future<SubParsed> fetchAndParse(String url, {bool preferJson = false}) async {
   Object? last;
   for (final ua in (preferJson ? _jsonAgents : _linkAgents)) {
     try {
-      final res = await http
-          .get(Uri.parse(url), headers: {'User-Agent': ua})
-          .timeout(const Duration(seconds: 15));
+      final res = await _get(url, ua);
       if (res.statusCode != 200) {
         last = Exception('HTTP ${res.statusCode}');
+        continue;
+      }
+      if (res.body.trimLeft().startsWith('<')) {
+        last = Exception('not a subscription'); // a web page, not a subscription
         continue;
       }
       final obs = await convert(res.body);
@@ -137,6 +274,46 @@ Future<SubParsed> fetchAndParse(String url, {bool preferJson = false}) async {
     }
   }
   throw last ?? Exception('subscription failed');
+}
+
+// ---------- which provider is the user on? ----------
+
+String friendlyIsp(String s) {
+  final l = s.toLowerCase();
+  const m = <String, List<String>>{
+    'mobile communication company of iran': ['همراه اول', 'Hamrah-e-Aval'],
+    'irancell': ['ایرانسل', 'Irancell'],
+    'rightel': ['رایتل', 'Rightel'],
+    'telecommunication company of iran': ['مخابرات (ADSL / فیبر)', 'TCI (ADSL / fiber)'],
+    'shatel': ['شاتل', 'Shatel'],
+    'pars online': ['پارس‌آنلاین', 'Pars Online'],
+    'asiatech': ['آسیاتک', 'Asiatech'],
+    'respina': ['رسپینا', 'Respina'],
+    'hiweb': ['های‌وب', 'HiWeb'],
+    'mobinnet': ['مبین‌نت', 'MobinNet'],
+    'samantel': ['سامانتل', 'Samantel'],
+    'afranet': ['افرانت', 'Afranet'],
+    'andishe sabz': ['اندیشه سبز', 'Andishe Sabz'],
+  };
+  for (final e in m.entries) {
+    if (l.contains(e.key)) return isFa ? e.value[0] : e.value[1];
+  }
+  return s;
+}
+
+/// Asks a public IP service for the provider name. Only meaningful while the VPN is off.
+Future<String?> lookupIsp() async {
+  for (final u in ['https://ipwho.is/', 'http://ip-api.com/json/?fields=status,isp,org']) {
+    try {
+      final r = await http.get(Uri.parse(u)).timeout(const Duration(seconds: 6));
+      if (r.statusCode != 200) continue;
+      final j = jsonDecode(r.body) as Map;
+      final c = j['connection'];
+      final raw = c is Map ? '${c['isp'] ?? c['org'] ?? ''}' : '${j['isp'] ?? j['org'] ?? ''}';
+      if (raw.isNotEmpty) return friendlyIsp(raw);
+    } catch (_) {}
+  }
+  return null;
 }
 
 SubInfo? parseUserInfo(String? h) {

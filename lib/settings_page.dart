@@ -119,7 +119,6 @@ class _SettingsPageState extends State<SettingsPage> {
                           ),
                         ),
                       ),
-                      if (!Platform.isWindows)
                       ListTile(
                         leading: Icon(Icons.apps_rounded, color: Pal.cyan),
                         title: Text(tr('per_app')),
@@ -151,6 +150,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _note(tr('update_every_note')),
                       _switch(tr('opt_connect_open'), s.connectOnOpen, (v) => s.connectOnOpen = v, icon: Icons.bolt_rounded),
                       _switch(tr('opt_clipboard'), s.clipboardWatch, (v) => s.clipboardWatch = v, icon: Icons.content_paste_rounded),
+                      _switch(tr('opt_show_net'), s.showNet, (v) => s.showNet = v, icon: Icons.network_check_rounded),
                       _switch(tr('opt_announce'), s.announceOn, (v) => s.announceOn = v,
                           sub: tr('opt_announce_sub'), icon: Icons.notifications_active_rounded),
                     ]),

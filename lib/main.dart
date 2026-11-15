@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show Platform, exit;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -10,6 +10,7 @@ import 'home.dart';
 import 'lang.dart';
 import 'pal.dart';
 import 'theme.dart';
+import 'win_core.dart';
 
 const kAppName = 'DastRas NG';
 const kChannelUrl = 'https://t.me/dastras';
@@ -50,7 +51,15 @@ Future<void> openAny(String url) async {
   return openUrl(url);
 }
 
-void main() => runApp(const App());
+Future<void> main(List<String> args) async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // run by the uninstaller: give the user's proxy settings back, then quit
+  if (Platform.isWindows && args.contains('--cleanup')) {
+    await WinCore.cleanupStale();
+    exit(0);
+  }
+  runApp(const App());
+}
 
 class App extends StatefulWidget {
   const App({super.key});

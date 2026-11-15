@@ -22,6 +22,12 @@ List<Map<String, dynamic>> parseShareText(String text) {
         ob = _trojan(line);
       } else if (line.startsWith('ss://')) {
         ob = _ss(line);
+      } else if (line.startsWith('hysteria2://') || line.startsWith('hy2://')) {
+        ob = _hysteria2(line);
+      } else if (line.startsWith('wireguard://')) {
+        ob = _wireguard(line);
+      } else if (line.startsWith('socks://') || line.startsWith('socks5://')) {
+        ob = _socks(line);
       }
       if (ob != null) out.add(ob);
     } catch (_) {}
@@ -74,10 +80,21 @@ Map<String, dynamic> _stream(Map<String, String> q, String host, {String default
       s['httpupgradeSettings'] = {'path': path, if (hostHdr.isNotEmpty) 'host': hostHdr};
       break;
     case 'xhttp':
-      s['xhttpSettings'] = {'path': path, if (hostHdr.isNotEmpty) 'host': hostHdr, 'mode': q['mode'] ?? 'auto'};
+      s['xhttpSettings'] = {
+        'path': path,
+        if (hostHdr.isNotEmpty) 'host': hostHdr,
+        'mode': q['mode'] ?? 'auto',
+        if (_json(q['extra'] ?? '') != null) 'extra': _json(q['extra']!),
+      };
       break;
     case 'http':
       s['httpSettings'] = {'path': path, 'host': hostHdr.isEmpty ? <String>[] : hostHdr.split(',')};
+      break;
+    case 'kcp':
+      s['kcpSettings'] = {
+        'header': {'type': q['headerType'] ?? 'none'},
+        if ((q['seed'] ?? '').isNotEmpty) 'seed': q['seed'],
+      };
       break;
     default:
       if ((q['headerType'] ?? '') == 'http') {
@@ -230,6 +247,82 @@ Map<String, dynamic>? _ss(String link) {
           'port': int.parse(hp.substring(p + 1).replaceAll('/', '')),
           'method': _dec(cred.substring(0, c)),
           'password': _dec(cred.substring(c + 1)),
+        }
+      ],
+    },
+  };
+}
+
+dynamic _json(String s) {
+  try {
+    return jsonDecode(s);
+  } catch (_) {
+    return null;
+  }
+}
+
+Map<String, dynamic> _hysteria2(String link) {
+  final u = Uri.parse(link);
+  final q = u.queryParameters;
+  final host = u.host;
+  return {
+    'protocol': 'hysteria',
+    'tag': _tag(u, host),
+    'settings': {'version': 2, 'address': host, 'port': u.port == 0 ? 443 : u.port},
+    'streamSettings': {
+      'network': 'hysteria',
+      'security': 'tls',
+      'tlsSettings': {'serverName': q['sni'] ?? q['peer'] ?? host, 'alpn': ['h3'], 'allowInsecure': false},
+      'hysteriaSettings': {'version': 2, 'auth': _dec(u.userInfo)},
+    },
+  };
+}
+
+Map<String, dynamic> _wireguard(String link) {
+  final u = Uri.parse(link);
+  final q = u.queryParameters;
+  final host = u.host;
+  final port = u.port == 0 ? 51820 : u.port;
+  return {
+    'protocol': 'wireguard',
+    'tag': _tag(u, host),
+    'settings': {
+      'secretKey': _dec(u.userInfo),
+      'address': (q['address'] ?? '10.0.0.2/32').split(','),
+      'peers': [
+        {
+          'publicKey': q['publickey'] ?? q['peer_public_key'] ?? '',
+          'endpoint': '$host:$port',
+          if ((q['presharedkey'] ?? '').isNotEmpty) 'preSharedKey': q['presharedkey'],
+        }
+      ],
+      'mtu': int.tryParse(q['mtu'] ?? '') ?? 1280,
+      if ((q['reserved'] ?? '').isNotEmpty) 'reserved': q['reserved']!.split(',').map((e) => int.tryParse(e) ?? 0).toList(),
+    },
+  };
+}
+
+Map<String, dynamic> _socks(String link) {
+  final u = Uri.parse(link.replaceFirst('socks5://', 'socks://'));
+  var user = '', pass = '';
+  var ui = _dec(u.userInfo);
+  if (ui.isNotEmpty) {
+    if (!ui.contains(':')) ui = _b64(ui) ?? ui;
+    final c = ui.indexOf(':');
+    if (c >= 0) {
+      user = ui.substring(0, c);
+      pass = ui.substring(c + 1);
+    }
+  }
+  return {
+    'protocol': 'socks',
+    'tag': _tag(u, u.host),
+    'settings': {
+      'servers': [
+        {
+          'address': u.host,
+          'port': u.port == 0 ? 1080 : u.port,
+          if (user.isNotEmpty) 'users': [{'user': user, 'pass': pass}],
         }
       ],
     },

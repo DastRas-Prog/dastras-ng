@@ -41,6 +41,7 @@ class Node {
   String get name => (ob['tag'] ?? ob['protocol'] ?? 'node').toString();
   String get key => '$name|$address';
   String? link; // the original share link (only for configs added by hand)
+  String? subUrl; // which subscription this server came from
 
   /// 1 or 2 from the name's trailing number ("UK 1", "IT 2"); falls back to the protocol (trojan = 1, vless = 2).
   String get group {
@@ -104,6 +105,13 @@ class Node {
     return e == null ? '' : '${e.$1}:${e.$2}';
   }
 
+  /// Two-letter lower-case country code ("de") used to pick the flag image.
+  String? get countryCode {
+    final f = flag;
+    if (f == null) return null;
+    return String.fromCharCodes(f.runes.map((x) => x - 0x1F1E6 + 97));
+  }
+
   /// Flag emoji from a leading country code ("CH 2") or an emoji in the name.
   String? get flag {
     final n = name;
@@ -117,7 +125,7 @@ class Node {
     return null;
   }
 
-  Map<String, dynamic> toJson() => {'ob': ob, 'src': src, 'tcp': tcp, 'real': real, 't': tested, 'lnk': link};
+  Map<String, dynamic> toJson() => {'ob': ob, 'src': src, 'tcp': tcp, 'real': real, 't': tested, 'lnk': link, 'su': subUrl};
 
   factory Node.fromJson(Map<String, dynamic> j) {
     final n = Node(Map<String, dynamic>.from(j['ob'] as Map), (j['src'] ?? 'manual').toString());
@@ -125,6 +133,7 @@ class Node {
     n.real = j['real'] is int ? j['real'] as int : (j['d'] is int ? j['d'] as int : null);
     n.tested = j['t'] == true;
     n.link = j['lnk'] is String ? j['lnk'] as String : null;
+    n.subUrl = j['su'] is String ? j['su'] as String : null;
     return n;
   }
 }
@@ -136,7 +145,29 @@ class Store {
   List<Node> nodes = [];
   List<String> subs = [];
   int selected = 0;
-  SubInfo? info;
+  /// Per subscription: {t: title, u: used, tot: total, e: expire}
+  Map<String, Map<String, dynamic>> subMeta = {};
+  bool showNet = true;
+
+  SubInfo? infoFor(String url) {
+    final m = subMeta[url];
+    if (m == null || m['tot'] == null) return null;
+    return SubInfo((m['u'] as int?) ?? 0, (m['tot'] as int?) ?? 0, (m['e'] as int?) ?? 0);
+  }
+
+  String titleFor(String url) => (subMeta[url]?['t'] ?? '').toString();
+
+  /// Usage of the subscription of the selected server (or of the first subscription that has it).
+  SubInfo? get info {
+    String? url;
+    if (nodes.isNotEmpty && selected < nodes.length) url = nodes[selected].subUrl;
+    if (url != null && infoFor(url) != null) return infoFor(url);
+    for (final u in subs) {
+      final i = infoFor(u);
+      if (i != null) return i;
+    }
+    return null;
+  }
   int updatedMs = 0;
   String lastClip = '';
   String subTitle = '';
@@ -161,6 +192,7 @@ class Store {
   bool mux = false;
   bool blockAds = false;
   bool announceOn = true;
+  bool showSystemApps = true;
   bool winAutostart = false;
   String sysJson = '[]'; // messages the app writes itself (e.g. new version)
   int updNotified = 0;
@@ -201,7 +233,7 @@ class Store {
   Future<String?> _getSecret(String k) async {
     if (Platform.isWindows) return _p.getString(k);
     try {
-      final v = await _sec.read(key: k);
+      final v = await _sec.read(key: k).timeout(const Duration(seconds: 4));
       if (v != null) return v;
     } catch (_) {}
     return _p.getString(k);
@@ -213,8 +245,8 @@ class Store {
       return;
     }
     try {
-      await _sec.write(key: k, value: v);
-      if (await _sec.read(key: k) == v) {
+      await _sec.write(key: k, value: v).timeout(const Duration(seconds: 4));
+      if (await _sec.read(key: k).timeout(const Duration(seconds: 4)) == v) {
         await _p.remove(k);
         return;
       }
@@ -263,6 +295,14 @@ class Store {
     dns = _p.getString('dns') ?? 'google';
     ipv6 = _p.getBool('ipv6') ?? false;
     announceOn = _p.getBool('announceOn') ?? true;
+    showSystemApps = _p.getBool('showSystemApps') ?? !Platform.isWindows;
+    showNet = _p.getBool('showNet') ?? true;
+    try {
+      subMeta = (jsonDecode(_p.getString('subMeta') ?? '{}') as Map)
+          .map((k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)));
+    } catch (_) {
+      subMeta = {};
+    }
     winAutostart = _p.getBool('winAutostart') ?? false;
     sysJson = _p.getString('sysJson') ?? '[]';
     updNotified = _p.getInt('updNotified') ?? 0;
@@ -279,12 +319,6 @@ class Store {
     blockQuic = _p.getBool('blockQuic') ?? true;
     mtu = _p.getInt('mtu') ?? 1500;
 
-    final inf = _p.getString('subinfo');
-    if (inf != null) {
-      try {
-        info = SubInfo.fromJson(Map<String, dynamic>.from(jsonDecode(inf) as Map));
-      } catch (_) {}
-    }
     if (selected >= nodes.length) selected = 0;
     Node.pingMode = pingMode;
   }
@@ -319,6 +353,9 @@ class Store {
     await _p.setBool('blockQuic', blockQuic);
     await _p.setInt('mtu', mtu);
     await _p.setBool('announceOn', announceOn);
+    await _p.setBool('showSystemApps', showSystemApps);
+    await _p.setBool('showNet', showNet);
+    await _p.setString('subMeta', jsonEncode(subMeta));
     await _p.setBool('winAutostart', winAutostart);
     await _p.setString('sysJson', sysJson);
     await _p.setInt('updNotified', updNotified);
@@ -328,10 +365,5 @@ class Store {
     await _p.setString('warnedDay', warnedDay);
     await _p.setString('warnDismissDay', warnDismissDay);
     await _p.setString('annJson', annJson);
-    if (info != null) {
-      await _p.setString('subinfo', jsonEncode(info!.toJson()));
-    } else {
-      await _p.remove('subinfo');
-    }
   }
 }

@@ -89,6 +89,7 @@ class XrayVpnService : VpnService(), DialerController {
             copyAsset("geosite.dat", datDir)
 
             val cfgFile = File(filesDir, "config.json")
+            if (!cfgFile.exists()) throw IllegalStateException("no saved config - open the app and connect once")
             val cfg = JSONObject(cfgFile.readText())
             // credentials must not stay on disk
             cfgFile.delete()
@@ -138,10 +139,8 @@ class XrayVpnService : VpnService(), DialerController {
                     }
                 }
             } else {
-                try {
-                    builder.addDisallowedApplication(packageName)
-                } catch (_: Exception) {
-                }
+                // our own app is NOT excluded: its requests (subscription, updates, news) use the tunnel too,
+                // and Xray's own sockets are protected, so this cannot loop
                 if (mode == "exclude") {
                     for (p in pkgs) {
                         try {

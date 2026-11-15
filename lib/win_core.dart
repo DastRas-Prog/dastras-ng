@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data' show Uint8List;
 
 import 'package:http/http.dart' as http;
 
+import 'core.dart' show AppInfo;
 import 'models.dart';
 import 'service.dart' show tcpStat;
 import 'share_links.dart';
@@ -388,6 +390,38 @@ class WinCore {
         r'''$s='[DllImport("wininet.dll")] public static extern bool InternetSetOption(IntPtr h,int o,IntPtr b,int l);'; $t=Add-Type -MemberDefinition $s -Name W -Namespace N -PassThru; $t::InternetSetOption([IntPtr]::Zero,39,[IntPtr]::Zero,0) | Out-Null; $t::InternetSetOption([IntPtr]::Zero,37,[IntPtr]::Zero,0) | Out-Null''',
       ]);
     } catch (_) {}
+  }
+
+  // ---------- program list for the per-app choice ----------
+
+  /// Running programs. [AppInfo.system] is true for background processes (no window).
+  static Future<List<AppInfo>> listApps() async {
+    try {
+      Future<String> ps(String cmd) async {
+        final r = await Process.run('powershell', ['-NoProfile', '-Command', '[Console]::OutputEncoding=[Text.Encoding]::UTF8; $cmd'],
+            stdoutEncoding: utf8);
+        return r.stdout as String;
+      }
+
+      final win = await ps(r"Get-Process | Where-Object { $_.MainWindowHandle -ne 0 } | ForEach-Object { $_.ProcessName + '|' + $_.MainWindowTitle }");
+      final all = await ps(r'Get-Process | Select-Object -ExpandProperty ProcessName -Unique');
+      final titles = <String, String>{};
+      for (final l in win.split(RegExp(r'[\r\n]+'))) {
+        final p = l.split('|');
+        if (p.isNotEmpty && p.first.trim().isNotEmpty) titles.putIfAbsent(p.first.trim(), () => p.length > 1 ? p.sublist(1).join('|').trim() : '');
+      }
+      final names = <String>{...titles.keys, ...all.split(RegExp(r'[\r\n]+')).map((e) => e.trim()).where((e) => e.isNotEmpty)};
+      names.removeWhere((n) => n.toLowerCase() == 'dastras-ng' || n.toLowerCase() == 'xray');
+      final out = <AppInfo>[];
+      for (final n in names) {
+        final t = titles[n] ?? '';
+        out.add(AppInfo(n, t.isEmpty ? n : '$t ($n)', Uint8List(0), !titles.containsKey(n)));
+      }
+      out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      return out;
+    } catch (_) {
+      return [];
+    }
   }
 
   // ---------- extras ----------

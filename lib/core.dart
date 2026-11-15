@@ -8,7 +8,8 @@ import 'win_core.dart';
 class AppInfo {
   final String pkg, name;
   final Uint8List icon;
-  AppInfo(this.pkg, this.name, this.icon);
+  final bool system;
+  AppInfo(this.pkg, this.name, this.icon, [this.system = false]);
 }
 
 class Traffic {
@@ -119,13 +120,13 @@ class Core {
   }
 
   static Future<List<AppInfo>> apps() async {
-    if (_win) return [];
+    if (_win) return WinCore.listApps();
     final s = await _ch.invokeMethod<String>('apps');
     final list = jsonDecode(s ?? '[]') as List;
     final out = <AppInfo>[];
     for (final e in list) {
       final m = Map<String, dynamic>.from(e as Map);
-      out.add(AppInfo(m['pkg'] as String, m['name'] as String, base64Decode(m['icon'] as String)));
+      out.add(AppInfo(m['pkg'] as String, m['name'] as String, base64Decode(m['icon'] as String), m['sys'] == true));
     }
     out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
     return out;
