@@ -1,7 +1,7 @@
 name: ng
 description: DastRas NG
 publish_to: 'none'
-version: 2.2.1+16
+version: 2.2.2+17
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

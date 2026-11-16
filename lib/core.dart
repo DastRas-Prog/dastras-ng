@@ -101,6 +101,14 @@ class Core {
     return (await _ch.invokeMethod<String>('installApk', path)) ?? 'error';
   }
 
+  /// type: wifi | cellular | other | none, plmn: mobile operator code (43211 = Hamrah-e-Aval, 43235 = Irancell)
+  static Future<({String type, String plmn})> network() async {
+    if (_win) return (type: 'wifi', plmn: '');
+    final s = (await _ch.invokeMethod<String>('network')) ?? 'none|';
+    final p = s.split('|');
+    return (type: p[0], plmn: p.length > 1 ? p[1] : '');
+  }
+
   static Future<void> share(String text) async {
     if (_win) {
       await Clipboard.setData(ClipboardData(text: text));
