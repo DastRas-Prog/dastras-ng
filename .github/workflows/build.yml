@@ -41,7 +41,19 @@ jobs:
           go install golang.org/x/mobile/cmd/gobind@latest
           gomobile init || true
           cd libXray
-          python3 build/main.py android
+          cp go.mod go.mod.bak
+          cp go.sum go.sum.bak
+          # always try the newest Xray-core; if it does not build, fall back to the version pinned by libXray
+          if go get github.com/xtls/xray-core@latest && go mod tidy && python3 build/main.py android; then
+            echo "Built with the latest Xray-core"
+          else
+            echo "Latest core failed - using the version pinned by libXray"
+            cp go.mod.bak go.mod
+            cp go.sum.bak go.sum
+            python3 build/main.py android
+          fi
+          awk '/github.com\/xtls\/xray-core /{print $2; exit}' go.mod > ../assets/xray_version.txt
+          cat ../assets/xray_version.txt
           find . -name "*.aar"
           mkdir -p ../aar
           cp "$(find . -name '*.aar' | head -n1)" ../aar/libXray.aar
@@ -64,8 +76,11 @@ jobs:
           cp ../pubspec.yaml .
           cp -r ../lib .
           mkdir -p assets android/app/libs
-          cp ../assets/geoip.dat ../assets/geosite.dat ../assets/logo.png assets/
+          cp ../assets/geoip.dat ../assets/geosite.dat ../assets/logo.png ../assets/xray_version.txt assets/
           cp -r ../assets/flags assets/
+          mkdir -p assets/fonts
+          cp ../assets/fonts/*.ttf assets/fonts/ 2>/dev/null || true
+          python3 ../scripts/add_font.py
           cp ../aar/libXray.aar android/app/libs/
           rm -rf android/app/src/main/res/mipmap-anydpi*
           cp -r ../android_overlay/res/* android/app/src/main/res/
@@ -173,6 +188,14 @@ jobs:
           channel: stable
           cache: true
 
+      - name: Get the latest Xray core (and its version)
+        shell: pwsh
+        run: |
+          Invoke-WebRequest "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-windows-64.zip" -OutFile xray.zip
+          Expand-Archive xray.zip -DestinationPath xray_tmp -Force
+          (& ./xray_tmp/xray.exe -version | Select-Object -First 1) | Out-File -Encoding ascii xray_version.txt
+          Get-Content xray_version.txt
+
       - name: Build the Windows app
         shell: bash
         run: |
@@ -184,7 +207,11 @@ jobs:
           cp -r ../lib .
           mkdir -p assets
           cp ../assets/logo.png assets/
+          cp ../xray_version.txt assets/
           cp -r ../assets/flags assets/
+          mkdir -p assets/fonts
+          cp ../assets/fonts/*.ttf assets/fonts/ 2>/dev/null || true
+          python ../scripts/add_font.py
           : > assets/geoip.dat
           : > assets/geosite.dat
           cp ../windows_overlay/app_icon.ico windows/runner/resources/app_icon.ico
