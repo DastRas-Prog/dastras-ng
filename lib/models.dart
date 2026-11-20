@@ -148,6 +148,7 @@ class Store {
   /// Per subscription: {t: title, u: used, tot: total, e: expire}
   Map<String, Map<String, dynamic>> subMeta = {};
   bool showNet = true;
+  bool tipHidden = false;
 
   SubInfo? infoFor(String url) {
     final m = subMeta[url];
@@ -297,6 +298,7 @@ class Store {
     announceOn = _p.getBool('announceOn') ?? true;
     showSystemApps = _p.getBool('showSystemApps') ?? !Platform.isWindows;
     showNet = _p.getBool('showNet') ?? true;
+    tipHidden = _p.getBool('tipHidden') ?? false;
     try {
       subMeta = (jsonDecode(_p.getString('subMeta') ?? '{}') as Map)
           .map((k, v) => MapEntry(k.toString(), Map<String, dynamic>.from(v as Map)));
@@ -355,6 +357,7 @@ class Store {
     await _p.setBool('announceOn', announceOn);
     await _p.setBool('showSystemApps', showSystemApps);
     await _p.setBool('showNet', showNet);
+    await _p.setBool('tipHidden', tipHidden);
     await _p.setString('subMeta', jsonEncode(subMeta));
     await _p.setBool('winAutostart', winAutostart);
     await _p.setString('sysJson', sysJson);

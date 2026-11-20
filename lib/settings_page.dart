@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'apps_page.dart';
 import 'config.dart';
@@ -257,6 +258,18 @@ class _SettingsPageState extends State<SettingsPage> {
                         _note(tr('win_note')),
                       ]),
                     _section(tr('app_update'), [
+                      ListTile(
+                        leading: Icon(Icons.memory_rounded, color: Pal.cyan),
+                        title: const Text('Xray-core'),
+                        subtitle: FutureBuilder<String>(
+                          future: rootBundle.loadString('assets/xray_version.txt'),
+                          builder: (c, snap) => Text(
+                            snap.hasData ? prettyXray(snap.data!) : '…',
+                            textDirection: TextDirection.ltr,
+                            style: TextStyle(color: Pal.t3),
+                          ),
+                        ),
+                      ),
                       ListTile(
                         leading: Icon(Icons.system_update_rounded, color: Pal.cyan),
                         title: Text(tr('check_update')),

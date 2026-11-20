@@ -114,7 +114,9 @@ class SubParsed {
   final SubInfo? info;
   final String? title; // profile-title header
   final String? supportUrl; // support-url header
-  SubParsed(this.obs, this.info, {this.title, this.supportUrl});
+  final String? fallbackUrl; // backup address (Happ: fallback-url)
+  final String? movedTo; // new address (Hiddify: moved-permanently-to)
+  SubParsed(this.obs, this.info, {this.title, this.supportUrl, this.fallbackUrl, this.movedTo});
 }
 
 String? _decodeTitle(String? h) {
@@ -249,7 +251,7 @@ List<int> _dechunk(List<int> b) {
   return out;
 }
 
-Future<SubParsed> fetchAndParse(String url, {bool preferJson = false}) async {
+Future<SubParsed> _fetchOne(String url, {bool preferJson = false}) async {
   Object? last;
   for (final ua in (preferJson ? _jsonAgents : _linkAgents)) {
     try {
@@ -268,12 +270,45 @@ Future<SubParsed> fetchAndParse(String url, {bool preferJson = false}) async {
         parseUserInfo(res.headers['subscription-userinfo']),
         title: _decodeTitle(res.headers['profile-title']),
         supportUrl: res.headers['support-url'],
+        fallbackUrl: res.headers['fallback-url'],
+        movedTo: res.headers['moved-permanently-to'],
       );
     } catch (e) {
       last = e;
     }
   }
   throw last ?? Exception('subscription failed');
+}
+
+/// Backup address written after the name: https://site/sub#Name?fallback-url=<encoded url>
+String? _fragmentFallback(String url) {
+  final f = Uri.tryParse(url)?.fragment ?? '';
+  final i = f.indexOf('fallback-url=');
+  if (i < 0) return null;
+  var v = f.substring(i + 13);
+  final amp = v.indexOf('&');
+  if (amp >= 0) v = v.substring(0, amp);
+  try {
+    final d = Uri.decodeComponent(v);
+    return d.startsWith('http') ? d : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+/// Reads the subscription; if the main address fails, tries the backup address (if there is one).
+Future<SubParsed> fetchAndParse(String url, {bool preferJson = false, String? fallback}) async {
+  try {
+    return await _fetchOne(url, preferJson: preferJson);
+  } catch (e) {
+    final fb = fallback ?? _fragmentFallback(url);
+    if (fb != null && fb != url) {
+      try {
+        return await _fetchOne(fb, preferJson: preferJson);
+      } catch (_) {}
+    }
+    rethrow;
+  }
 }
 
 // ---------- which provider is the user on? ----------
@@ -398,7 +433,7 @@ Future<TcpStat?> _tcp(Node n, int samples) async {
 Future<TcpStat?> tcpStat(Node n, int samples) => _tcp(n, samples);
 
 /// Tests every node in parallel (16 at a time) and stores the result on the nodes.
-Future<void> tcpPingAll(List<Node> nodes, {int samples = 2}) async {
+Future<void> tcpPingAll(List<Node> nodes, {int samples = 2, void Function()? onResult}) async {
   for (var i = 0; i < nodes.length; i += 16) {
     final end = math.min(i + 16, nodes.length);
     await Future.wait([
@@ -407,6 +442,7 @@ Future<void> tcpPingAll(List<Node> nodes, {int samples = 2}) async {
           nodes[k].stat = s;
           nodes[k].tcp = (s != null && s.ok > 0) ? s.min : null;
           nodes[k].tested = true;
+          onResult?.call();
         })
     ]);
   }

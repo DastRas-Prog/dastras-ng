@@ -475,9 +475,18 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       final all = <Node>[];
       final failed = <String>[];
       Object? firstErr;
-      for (final url in store.subs) {
+      for (final url0 in List<String>.from(store.subs)) {
+        var url = url0;
         try {
-          final r = await fetchAndParse(url, preferJson: store.panelTuning);
+          final r = await fetchAndParse(url, preferJson: store.panelTuning, fallback: store.subMeta[url]?['fb'] as String?);
+          // the panel moved to a new address (used when the old domain gets blocked)
+          final mv = r.movedTo;
+          if (mv != null && mv.startsWith('http') && mv != url) {
+            final i = store.subs.indexOf(url);
+            if (i >= 0) store.subs[i] = mv;
+            if (store.subMeta.containsKey(url)) store.subMeta[mv] = store.subMeta.remove(url)!;
+            url = mv;
+          }
           for (final o in r.obs) {
             final n = Node(o, 'sub')..subUrl = url;
             final p = old[n.key];
@@ -490,6 +499,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             all.add(n);
           }
           final meta = <String, dynamic>{'t': (r.title ?? '').trim().isNotEmpty ? r.title!.trim() : store.titleFor(url)};
+          final fb = r.fallbackUrl ?? store.subMeta[url]?['fb'];
+          if (fb != null) meta['fb'] = fb;
           if (r.info != null) {
             meta['u'] = r.info!.used;
             meta['tot'] = r.info!.total;
@@ -561,16 +572,29 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     }
   }
 
+  bool _liveSort = false;
+
   Future<void> _ping() async {
     if (store.nodes.isEmpty) return;
     if ((running || starting) && !Platform.isWindows) {
       _toast(tr('disconnect_first'));
       return;
     }
-    setState(() => busy = true);
+    setState(() {
+      busy = true;
+      _liveSort = true; // the list re-orders itself while the results arrive
+      for (final n in store.nodes) {
+        n.tcp = null;
+        n.real = null;
+        n.stat = null;
+        n.tested = false;
+      }
+    });
     try {
       final selKey = store.nodes[store.selected].key;
-      await tcpPingAll(store.nodes, samples: 3);
+      await tcpPingAll(store.nodes, samples: 3, onResult: () {
+        if (mounted) setState(() {});
+      });
       if (store.pingMode == 'real') {
         if (running || starting) {
           _toast(tr('disconnect_first'));
@@ -579,27 +603,34 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           for (var i = 0; i < store.nodes.length && i < res.length; i++) {
             store.nodes[i].real = res[i];
           }
+          if (mounted) setState(() {});
         }
       }
-      if (store.nodes.any((n) => n.delay != null)) {
-        final sorted = List<Node>.from(store.nodes)
-          ..sort((a, b) {
-            final x = a.delay, y = b.delay;
-            if (x == null && y == null) return 0;
-            if (x == null) return 1;
-            if (y == null) return -1;
-            return x.compareTo(y);
-          });
-        store.nodes = sorted;
-        final idx = sorted.indexWhere((n) => n.key == selKey);
-        store.selected = store.autoSelect ? 0 : (idx >= 0 ? idx : 0);
+      if (store.nodes.any((n) => !n.isInfo && n.delay != null)) {
+        final order = List<int>.generate(store.nodes.length, (i) => i)..sort(_byDelay);
+        store.nodes = [for (final i in order) store.nodes[i]];
+        final idx = store.nodes.indexWhere((n) => n.key == selKey);
+        final firstReal = store.nodes.indexWhere((n) => !n.isInfo);
+        store.selected = store.autoSelect ? (firstReal < 0 ? 0 : firstReal) : (idx >= 0 ? idx : 0);
       }
       await store.save();
     } catch (e) {
       _toast('${tr('error')}: $e');
     } finally {
+      _liveSort = false;
       if (mounted) setState(() => busy = false);
     }
+  }
+
+  /// Fastest first, failed last, account-info entries at the very end.
+  int _byDelay(int a, int b) {
+    final x = store.nodes[a].isInfo ? null : store.nodes[a].delay;
+    final y = store.nodes[b].isInfo ? null : store.nodes[b].delay;
+    if (x == null && y == null) return a.compareTo(b);
+    if (x == null) return 1;
+    if (y == null) return -1;
+    final c = x.compareTo(y);
+    return c != 0 ? c : a.compareTo(b);
   }
 
   // ---------- dialogs / sheets ----------
@@ -1398,9 +1429,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final items = <Widget>[];
     for (final sec in sections) {
       items.add(_sectionHeader(sec.$1, sec.$2, sec.$3.length));
-      for (final i in sec.$3) {
-        items.add(_nodeCard(i));
-      }
+      items.add(_animatedNodes(sec.$3));
     }
     return RefreshIndicator(
       onRefresh: () => _refreshSubs(),
@@ -1420,6 +1449,31 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       ]),
     );
   }
+
+  /// Cards sit at fixed slots, so when the order changes they slide to their new place.
+  Widget _animatedNodes(List<int> idx) {
+    final order = [...idx];
+    if (_liveSort) order.sort(_byDelay);
+    const rowH = 74.0;
+    return SizedBox(
+      height: order.length * rowH,
+      child: Stack(children: [
+        for (var r = 0; r < order.length; r++)
+          AnimatedPositioned(
+            key: ValueKey('${store.nodes[order[r]].key}#${order[r]}'),
+            duration: const Duration(milliseconds: 500),
+            curve: Curves.easeOutCubic,
+            top: r * rowH,
+            left: 0,
+            right: 0,
+            height: rowH,
+            child: _nodeCard(order[r]),
+          ),
+      ]),
+    );
+  }
+
+  bool _isOurSub(String url) => (Uri.tryParse(url)?.host.toLowerCase() ?? '').startsWith('dastras');
 
   Widget _sectionHeader(String title, String? url, int count) {
     final info = url == null ? null : store.infoFor(url);
@@ -1443,6 +1497,30 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             child: Text('$count', style: TextStyle(fontSize: 12.5, color: Pal.t2)),
           ),
         ]),
+        if (url != null && _isOurSub(url) && !store.tipHidden)
+          Container(
+            margin: const EdgeInsets.only(top: 8),
+            padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 4, 8),
+            decoration: BoxDecoration(
+              color: Pal.accent.withValues(alpha: 0.10),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Pal.cardBorder),
+            ),
+            child: Row(children: [
+              Icon(Icons.lightbulb_outline_rounded, size: 18, color: Pal.orange),
+              const SizedBox(width: 8),
+              Expanded(child: Text(tr('server_tip'), style: TextStyle(fontSize: 12.5, height: 1.4, color: Pal.t2))),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () async {
+                  store.tipHidden = true;
+                  await store.save();
+                  if (mounted) setState(() {});
+                },
+              ),
+            ]),
+          ),
         if (info != null) ...[
           const SizedBox(height: 8),
           ClipRRect(
@@ -1727,6 +1805,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                   Text(n.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Pal.t4)),
                 ]),
               ),
+              if (pingText.isEmpty && _liveSort && !n.tested)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 8),
+                  child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+                ),
               if (pingText.isNotEmpty)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),

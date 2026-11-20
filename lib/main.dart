@@ -107,6 +107,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
           theme: ThemeData(
             useMaterial3: true,
             brightness: dark ? Brightness.dark : Brightness.light,
+            fontFamily: 'MiSans', // used when the font files are bundled, otherwise the system font
             colorSchemeSeed: Pal.accent,
             scaffoldBackgroundColor: Pal.bg0,
             dialogTheme: DialogThemeData(backgroundColor: Pal.dialog),

@@ -11,8 +11,17 @@ import 'theme.dart';
 
 /// Injected by the build (GitHub run number). 0 = local/dev build.
 const int kBuild = int.fromEnvironment('BUILD_NUMBER', defaultValue: 0);
-const String kVersion = '2.2.2';
+const String kVersion = '2.3.0';
 const String kRepo = 'DastRas-Prog/dastras-ng';
+
+/// "v1.260327.1-0.2026..." or "Xray 26.3.27 (...)" -> "26.3.27"
+String prettyXray(String raw) {
+  final t = raw.trim();
+  final m = RegExp(r'v?1\.(\d{2})(\d{2})(\d{2})\.(\d+)').firstMatch(t);
+  if (m != null) return '${int.parse(m[1]!)}.${int.parse(m[2]!)}.${int.parse(m[3]!)}';
+  final m2 = RegExp(r'v?(\d+\.\d+\.\d+)').firstMatch(t);
+  return m2?.group(1) ?? (t.isEmpty ? '—' : t);
+}
 
 class UpdateInfo {
   final int build;
