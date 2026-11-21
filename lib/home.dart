@@ -140,6 +140,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     try {
       status = await Core.status();
     } catch (_) {}
+    try {
+      _xrayVer = prettyXray(await rootBundle.loadString('assets/xray_version.txt'));
+    } catch (_) {}
     if (!mounted) return;
     setState(() => ready = true);
     timer = Timer.periodic(const Duration(seconds: 1), (_) => _poll());
@@ -395,13 +398,26 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   /// Tapping another server: if already connected, switch to it automatically.
+  /// Tapping a server makes it the manual choice and connects to it right away.
   Future<void> _select(int i) async {
-    if (i == store.selected) return;
     HapticFeedback.selectionClick();
+    final changed = i != store.selected;
     store.selected = i;
+    store.autoSelect = false; // choosing a server yourself means manual mode
     await store.save();
     if (mounted) setState(() {});
-    if ((running || starting) && !preparing) await _switchServer();
+    if (preparing) return;
+    if (running || starting) {
+      if (changed) await _switchServer();
+    } else {
+      preparing = true;
+      try {
+        await _startSelected();
+      } finally {
+        preparing = false;
+        if (mounted) setState(() {});
+      }
+    }
   }
 
   Future<void> _switchServer() async {
@@ -599,11 +615,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         if (running || starting) {
           _toast(tr('disconnect_first'));
         } else {
-          final res = await pingBatch(store.nodes.map((n) => n.ob).toList(), store.testUrl);
-          for (var i = 0; i < store.nodes.length && i < res.length; i++) {
-            store.nodes[i].real = res[i];
-          }
-          if (mounted) setState(() {});
+          await pingReal(store.nodes, store.testUrl, onResult: () {
+            if (mounted) setState(() {});
+          });
         }
       }
       if (store.nodes.any((n) => !n.isInfo && n.delay != null)) {
@@ -719,6 +733,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   // ---------- connection type (operator) ----------
 
+  String _xrayVer = '';
   String _netLabel = '';
   String? _wifiIsp;
   DateTime _ispAt = DateTime.fromMillisecondsSinceEpoch(0);
@@ -1260,6 +1275,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       _serverCard(),
       if (store.info != null) const SizedBox(height: 10),
       if (store.info != null) _usageCard(),
+      if (_xrayVer.isNotEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 12),
+          child: Text('Xray-core $_xrayVer', textDirection: TextDirection.ltr, style: TextStyle(fontSize: 11.5, color: Pal.t4)),
+        ),
     ]);
   }
 

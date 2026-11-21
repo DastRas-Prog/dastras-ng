@@ -135,9 +135,6 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
     if (win) ...{
       'stats': {},
       'api': {'tag': 'api', 'services': ['StatsService']},
-      'policy': {
-        'system': {'statsOutboundUplink': true, 'statsOutboundDownlink': true}
-      },
     },
     'inbounds': win
         ? [
@@ -183,6 +180,13 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
       }
     ],
     'outbounds': outbounds,
+    // the default per-connection buffer on ARM phones is tiny (4 kB); a bigger one raises throughput
+    'policy': {
+      'levels': {
+        '0': {'bufferSize': 512}
+      },
+      if (win) 'system': {'statsOutboundUplink': true, 'statsOutboundDownlink': true},
+    },
     // AsIs avoids extra DNS lookups when no geoip rules are in use.
     'routing': {'domainStrategy': s.bypassIran ? 'IPIfNonMatch' : 'AsIs', 'rules': rules},
   };

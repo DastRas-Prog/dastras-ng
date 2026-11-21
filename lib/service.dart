@@ -404,16 +404,21 @@ Future<List<int?>> pingBatch(List<Map<String, dynamic>> obs, String url) async {
 
 /// TCP connect time to the server itself (DNS excluded). Works even while connected,
 /// because this app is excluded from the VPN.
+final Map<String, InternetAddress> _dnsCache = {};
+
 Future<TcpStat?> _tcp(Node n, int samples) async {
   final e = n.endpoint;
   if (e == null) return null;
-  InternetAddress addr;
-  try {
-    final l = await InternetAddress.lookup(e.$1).timeout(const Duration(seconds: 3));
-    if (l.isEmpty) return const TcpStat(0, 1, 0, 0, 0);
-    addr = l.first;
-  } catch (_) {
-    return TcpStat(0, samples, 0, 0, 0);
+  InternetAddress? addr = _dnsCache[e.$1] ?? InternetAddress.tryParse(e.$1);
+  if (addr == null) {
+    try {
+      final l = await InternetAddress.lookup(e.$1).timeout(const Duration(seconds: 3));
+      if (l.isEmpty) return const TcpStat(0, 1, 0, 0, 0);
+      addr = l.first;
+      _dnsCache[e.$1] = addr;
+    } catch (_) {
+      return TcpStat(0, samples, 0, 0, 0);
+    }
   }
   final t = <int>[];
   for (var i = 0; i < samples; i++) {
@@ -432,18 +437,36 @@ Future<TcpStat?> _tcp(Node n, int samples) async {
 
 Future<TcpStat?> tcpStat(Node n, int samples) => _tcp(n, samples);
 
-/// Tests every node in parallel (16 at a time) and stores the result on the nodes.
-Future<void> tcpPingAll(List<Node> nodes, {int samples = 2, void Function()? onResult}) async {
-  for (var i = 0; i < nodes.length; i += 16) {
-    final end = math.min(i + 16, nodes.length);
-    await Future.wait([
-      for (var k = i; k < end; k++)
-        _tcp(nodes[k], samples).then((s) {
-          nodes[k].stat = s;
-          nodes[k].tcp = (s != null && s.ok > 0) ? s.min : null;
-          nodes[k].tested = true;
-          onResult?.call();
-        })
-    ]);
+/// Tests the servers a few at a time; [onResult] fires as soon as each one is done,
+/// so the list can show (and re-order) results one by one instead of waiting for all of them.
+Future<void> tcpPingAll(List<Node> nodes, {int samples = 2, void Function()? onResult, int concurrency = 6}) async {
+  var next = 0;
+  Future<void> worker() async {
+    while (true) {
+      final k = next++;
+      if (k >= nodes.length) return;
+      TcpStat? st;
+      try {
+        st = await _tcp(nodes[k], samples);
+      } catch (_) {}
+      nodes[k].stat = st;
+      nodes[k].tcp = (st != null && st.ok > 0) ? st.min : null;
+      nodes[k].tested = true;
+      onResult?.call();
+    }
+  }
+
+  await Future.wait([for (var w = 0; w < math.min(concurrency, nodes.length); w++) worker()]);
+}
+
+/// Real (URL) delay, three servers per round, reporting after every round.
+Future<void> pingReal(List<Node> nodes, String url, {void Function()? onResult}) async {
+  for (var i = 0; i < nodes.length; i += 3) {
+    final chunk = nodes.sublist(i, math.min(i + 3, nodes.length));
+    final res = await pingBatch(chunk.map((n) => n.ob).toList(), url);
+    for (var k = 0; k < chunk.length; k++) {
+      chunk[k].real = k < res.length ? res[k] : null;
+    }
+    onResult?.call();
   }
 }

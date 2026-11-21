@@ -263,11 +263,14 @@ class _SettingsPageState extends State<SettingsPage> {
                         title: const Text('Xray-core'),
                         subtitle: FutureBuilder<String>(
                           future: rootBundle.loadString('assets/xray_version.txt'),
-                          builder: (c, snap) => Text(
-                            snap.hasData ? prettyXray(snap.data!) : '…',
-                            textDirection: TextDirection.ltr,
-                            style: TextStyle(color: Pal.t3),
-                          ),
+                          builder: (c, snap) {
+                            final v = snap.hasData ? prettyXray(snap.data!) : '…';
+                            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                              Text(v, textDirection: TextDirection.ltr, style: TextStyle(color: Pal.t3)),
+                              if (snap.hasData && xrayIsOld(v))
+                                Text(tr('core_old'), style: TextStyle(fontSize: 12, color: Pal.orange)),
+                            ]);
+                          },
                         ),
                       ),
                       ListTile(

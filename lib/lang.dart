@@ -209,6 +209,7 @@ const _fa = {
   'add_process': 'افزودن با نام برنامه (مثلاً chrome)',
   'win_apps_note': 'تجربی: فقط برای برنامه‌هایی کار می‌کند که از پروکسی سیستم استفاده می‌کنند. در حالت «فقط انتخاب‌شده‌ها»، بقیه‌ی برنامه‌ها مستقیم می‌روند.',
   'server_tip': 'نکته: معمولاً سرورهای شماره‌ی ۱ برای همراه اول و سرورهای شماره‌ی ۲ برای ایرانسل و وای‌فای بهتر جواب می‌دهند.',
+  'core_old': 'هسته‌ی قدیمی: سرعت کمتر است. بیلد جدید بگیرید تا هسته‌ی ۲۶.۱۰.۲۱ یا جدیدتر قرار بگیرد.',
 };
 
 const _en = {
@@ -393,4 +394,5 @@ const _en = {
   'add_process': 'Add by program name (e.g. chrome)',
   'win_apps_note': 'Experimental: works only for programs that use the system proxy. In "Only selected" mode every other program goes direct.',
   'server_tip': 'Tip: servers numbered 1 usually work better on Hamrah-e-Aval, and servers numbered 2 on Irancell and Wi-Fi.',
+  'core_old': 'Old core: slower speed. Rebuild so it uses core 26.10.21 or newer.',
 };

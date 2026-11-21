@@ -11,7 +11,7 @@ import 'theme.dart';
 
 /// Injected by the build (GitHub run number). 0 = local/dev build.
 const int kBuild = int.fromEnvironment('BUILD_NUMBER', defaultValue: 0);
-const String kVersion = '2.3.0';
+const String kVersion = '2.3.1';
 const String kRepo = 'DastRas-Prog/dastras-ng';
 
 /// "v1.260327.1-0.2026..." or "Xray 26.3.27 (...)" -> "26.3.27"
@@ -21,6 +21,14 @@ String prettyXray(String raw) {
   if (m != null) return '${int.parse(m[1]!)}.${int.parse(m[2]!)}.${int.parse(m[3]!)}';
   final m2 = RegExp(r'v?(\d+\.\d+\.\d+)').firstMatch(t);
   return m2?.group(1) ?? (t.isEmpty ? '—' : t);
+}
+
+/// Cores older than 26.10.21 use the slow gVisor TUN stack.
+bool xrayIsOld(String pretty) {
+  final m = RegExp(r'^(\d+)\.(\d+)\.(\d+)$').firstMatch(pretty.trim());
+  if (m == null) return false;
+  final v = int.parse(m[1]!) * 10000 + int.parse(m[2]!) * 100 + int.parse(m[3]!);
+  return v < 261021;
 }
 
 class UpdateInfo {
