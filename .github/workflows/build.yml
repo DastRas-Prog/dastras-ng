@@ -52,7 +52,9 @@ jobs:
             cp go.sum.bak go.sum
             python3 build/main.py android
           fi
-          awk '/github.com\/xtls\/xray-core /{print $2; exit}' go.mod > ../assets/xray_version.txt
+          ver=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' github.com/xtls/xray-core 2>/dev/null || true)
+          if [ -z "$ver" ]; then ver=$(awk '/github.com\/xtls\/xray-core /{print $2; exit}' go.mod); fi
+          echo "$ver" > ../assets/xray_version.txt
           cat ../assets/xray_version.txt
           find . -name "*.aar"
           mkdir -p ../aar
