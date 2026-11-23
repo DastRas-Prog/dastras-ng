@@ -43,18 +43,26 @@ jobs:
           cd libXray
           cp go.mod go.mod.bak
           cp go.sum go.sum.bak
-          # always try the newest Xray-core; if it does not build, fall back to the version pinned by libXray
-          if go get github.com/xtls/xray-core@latest && go mod tidy && python3 build/main.py android; then
-            echo "Built with the latest Xray-core"
+          # Go modules can not see Xray's v26.x release tags, so take the exact commit of the newest release
+          tag=$(curl -fsSL https://api.github.com/repos/XTLS/Xray-core/releases/latest | python3 -c "import sys,json; print(json.load(sys.stdin)['tag_name'])" || true)
+          sha=""
+          if [ -n "$tag" ]; then
+            sha=$(git ls-remote https://github.com/XTLS/Xray-core.git "refs/tags/${tag}^{}" | cut -f1)
+            if [ -z "$sha" ]; then sha=$(git ls-remote https://github.com/XTLS/Xray-core.git "refs/tags/${tag}" | cut -f1); fi
+          fi
+          echo "newest Xray-core release: $tag ($sha)"
+          if [ -n "$sha" ] && go get "github.com/xtls/xray-core@$sha" && go mod tidy && python3 build/main.py android; then
+            echo "Built with Xray-core $tag"
+            echo "$tag" > ../assets/xray_version.txt
           else
-            echo "Latest core failed - using the version pinned by libXray"
+            echo "The newest core did not build - using the version pinned by libXray"
             cp go.mod.bak go.mod
             cp go.sum.bak go.sum
             python3 build/main.py android
+            ver=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' github.com/xtls/xray-core 2>/dev/null || true)
+            if [ -z "$ver" ]; then ver=$(awk '/github.com\/xtls\/xray-core /{print $2; exit}' go.mod); fi
+            echo "$ver" > ../assets/xray_version.txt
           fi
-          ver=$(go list -m -f '{{if .Replace}}{{.Replace.Version}}{{else}}{{.Version}}{{end}}' github.com/xtls/xray-core 2>/dev/null || true)
-          if [ -z "$ver" ]; then ver=$(awk '/github.com\/xtls\/xray-core /{print $2; exit}' go.mod); fi
-          echo "$ver" > ../assets/xray_version.txt
           cat ../assets/xray_version.txt
           find . -name "*.aar"
           mkdir -p ../aar
@@ -279,3 +287,104 @@ jobs:
           files: |
             DastRas-NG-windows.zip
             Output/DastRas-NG-Setup.exe
+
+  macos:
+    needs: build
+    runs-on: macos-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Get the latest Xray core for both Mac CPUs
+        run: |
+          mkdir -p xray_mac
+          for pair in "arm64-v8a:arm64" "64:x64"; do
+            src="${pair%%:*}"
+            dst="${pair##*:}"
+            curl -fsSL -o x.zip "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-macos-$src.zip"
+            rm -rf x_tmp && mkdir x_tmp && unzip -q x.zip -d x_tmp
+            cp x_tmp/xray "xray_mac/xray-$dst"
+            chmod +x "xray_mac/xray-$dst"
+          done
+          for f in geoip.dat geosite.dat; do
+            curl -fsSL -o "xray_mac/$f" "https://github.com/Chocolate4U/Iran-v2ray-rules/releases/latest/download/$f" || curl -fsSL -o "xray_mac/$f" "https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/$f"
+          done
+          if [ "$(uname -m)" = "arm64" ]; then ./xray_mac/xray-arm64 -version | head -n 1 > xray_version.txt; else ./xray_mac/xray-x64 -version | head -n 1 > xray_version.txt; fi
+          cat xray_version.txt
+
+      - name: Build the macOS app
+        run: |
+          flutter config --enable-macos-desktop
+          flutter create --org com.dastras --project-name ng --platforms macos mac_build
+          cd mac_build
+          rm -rf test lib analysis_options.yaml
+          cp ../pubspec.yaml .
+          cp -r ../lib .
+          mkdir -p assets
+          cp ../assets/logo.png assets/
+          cp ../xray_version.txt assets/
+          cp -r ../assets/flags assets/
+          : > assets/geoip.dat
+          : > assets/geosite.dat
+          mkdir -p assets/fonts
+          cp ../assets/fonts/*.ttf assets/fonts/ 2>/dev/null || true
+          python3 ../scripts/add_font.py
+          for s in 16 32 64 128 256 512 1024; do sips -z $s $s ../assets/logo.png --out macos/Runner/Assets.xcassets/AppIcon.appiconset/app_icon_$s.png > /dev/null; done
+          # the app starts the bundled Xray, so the App Sandbox must be off
+          python3 - << 'PY'
+          import re, glob
+          for f in glob.glob('macos/Runner/*.entitlements'):
+              s = open(f).read()
+              s = re.sub(r'(com.apple.security.app-sandbox</key>\s*)<true/>', r'\1<false/>', s)
+              open(f, 'w').write(s)
+          PY
+          sed -i '' 's/^PRODUCT_NAME = .*/PRODUCT_NAME = DastRas NG/' macos/Runner/Configs/AppInfo.xcconfig
+          # data is kept in plain preferences on desktop, so the native secure-storage plugin is replaced by an empty stub
+          mkdir -p stubs/flutter_secure_storage/lib
+          cat > stubs/flutter_secure_storage/pubspec.yaml << 'STUB'
+          name: flutter_secure_storage
+          version: 9.2.4
+          environment:
+            sdk: '>=3.0.0 <4.0.0'
+          STUB
+          cat > stubs/flutter_secure_storage/lib/flutter_secure_storage.dart << 'STUB'
+          class FlutterSecureStorage {
+            const FlutterSecureStorage();
+            Future<String?> read({required String key}) async => null;
+            Future<void> write({required String key, required String? value}) async {}
+          }
+          STUB
+          printf '\ndependency_overrides:\n  flutter_secure_storage:\n    path: stubs/flutter_secure_storage\n' >> pubspec.yaml
+          flutter pub get
+          flutter build macos --release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
+
+      - name: Bundle Xray, sign and make the disk image
+        run: |
+          APP=$(ls -d mac_build/build/macos/Build/Products/Release/*.app | head -n 1)
+          mkdir -p "$APP/Contents/Resources/xray"
+          cp xray_mac/* "$APP/Contents/Resources/xray/"
+          chmod +x "$APP/Contents/Resources/xray/"xray-*
+          codesign --force --deep -s - "$APP"
+          mkdir dmg_root
+          cp -R "$APP" dmg_root/
+          ln -s /Applications dmg_root/Applications
+          hdiutil create -volname "DastRas NG" -srcfolder dmg_root -ov -format UDZO DastRas-NG-macOS.dmg
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: DastRas-NG-macOS
+          path: DastRas-NG-macOS.dmg
+
+      - name: Add the macOS disk image to the release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          files: DastRas-NG-macOS.dmg
