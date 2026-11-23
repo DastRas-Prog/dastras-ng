@@ -11,7 +11,7 @@ import 'theme.dart';
 
 /// Injected by the build (GitHub run number). 0 = local/dev build.
 const int kBuild = int.fromEnvironment('BUILD_NUMBER', defaultValue: 0);
-const String kVersion = '2.3.1';
+const String kVersion = '2.4.0';
 const String kRepo = 'DastRas-Prog/dastras-ng';
 
 /// "v1.260327.1-0.2026..." or "Xray 26.3.27 (...)" -> "26.3.27"
@@ -39,6 +39,7 @@ class UpdateInfo {
 
 String _apkName(String abi) {
   if (abi == 'windows') return 'DastRas-NG-windows.zip';
+  if (abi == 'macos') return 'DastRas-NG-macOS.dmg';
   if (abi.contains('arm64')) return 'app-arm64-v8a-release.apk';
   if (abi.contains('armeabi') || abi.contains('v7')) return 'app-armeabi-v7a-release.apk';
   if (abi.contains('x86_64')) return 'app-x86_64-release.apk';
@@ -140,7 +141,7 @@ class _UpdatePageState extends State<UpdatePage> {
       final dir = Directory('${await Core.cacheDir()}/updates');
       if (dir.existsSync()) dir.deleteSync(recursive: true);
       dir.createSync(recursive: true);
-      final file = File('${dir.path}/app.${Platform.isWindows ? 'zip' : 'apk'}');
+      final file = File('${dir.path}/app.${Platform.isWindows ? 'zip' : (Platform.isMacOS ? 'dmg' : 'apk')}');
       final client = http.Client();
       final resp = await client.send(http.Request('GET', Uri.parse(i.url))).timeout(const Duration(seconds: 30));
       if (resp.statusCode != 200) throw Exception('HTTP ${resp.statusCode}');
@@ -158,7 +159,7 @@ class _UpdatePageState extends State<UpdatePage> {
       if (!mounted) return;
       setState(() {
         downloading = false;
-        message = r == 'needs_permission' ? tr('update_perm') : (r == 'ok' ? tr('update_signed') : r);
+        message = r == 'needs_permission' ? tr('update_perm') : (r == 'mac' ? tr('mac_update_note') : (r == 'ok' ? tr('update_signed') : r));
       });
     } catch (e) {
       if (!mounted) return;

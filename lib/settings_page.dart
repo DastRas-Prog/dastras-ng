@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'platform.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
@@ -197,11 +198,11 @@ class _SettingsPageState extends State<SettingsPage> {
                       }, sub: tr('opt_panel_tuning_sub'), icon: Icons.tune_rounded),
                       _switch(tr('opt_fragment'), s.fragment, (v) => s.fragment = v, icon: Icons.content_cut_rounded),
                       _switch(tr('opt_mux'), s.mux, (v) => s.mux = v, icon: Icons.merge_type_rounded),
-                      if (!Platform.isWindows) _switch(tr('opt_ipv6'), s.ipv6, (v) => s.ipv6 = v, icon: Icons.public_rounded),
+                      if (!isDesktop) _switch(tr('opt_ipv6'), s.ipv6, (v) => s.ipv6 = v, icon: Icons.public_rounded),
                       _switch(tr('opt_block_quic'), s.blockQuic, (v) => s.blockQuic = v,
                           sub: tr('opt_block_quic_sub'), icon: Icons.speed_rounded),
                       _switch(tr('opt_ads'), s.blockAds, (v) => s.blockAds = v, icon: Icons.block_rounded),
-                      if (!Platform.isWindows)
+                      if (!isDesktop)
                       ListTile(
                         leading: Icon(Icons.straighten_rounded, color: Pal.cyan),
                         title: const Text('MTU'),
@@ -235,7 +236,7 @@ class _SettingsPageState extends State<SettingsPage> {
                     ]),
                     _section(tr('sec_security'), [
                       _switch(tr('opt_https_only'), s.httpsOnly, (v) => s.httpsOnly = v, icon: Icons.lock_rounded),
-                      if (!Platform.isWindows)
+                      if (!isDesktop)
                       ListTile(
                         leading: Icon(Icons.vpn_lock_rounded, color: Pal.cyan),
                         title: Text(tr('sys_vpn')),
@@ -244,8 +245,8 @@ class _SettingsPageState extends State<SettingsPage> {
                       ),
                       _note(tr('sec_note')),
                     ]),
-                    if (Platform.isWindows)
-                      _section(tr('sec_windows'), [
+                    if (isDesktop)
+                      _section(Platform.isMacOS ? 'macOS' : tr('sec_windows'), [
                         _switch(tr('opt_autostart'), s.winAutostart, (v) {
                           s.winAutostart = v;
                           WinCore.setAutostart(v);

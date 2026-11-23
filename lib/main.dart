@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'platform.dart';
 import 'dart:io' show Platform, exit;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -54,7 +55,7 @@ Future<void> openAny(String url) async {
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
   // run by the uninstaller: give the user's proxy settings back, then quit
-  if (Platform.isWindows && args.contains('--cleanup')) {
+  if (isDesktop && args.contains('--cleanup')) {
     await WinCore.cleanupStale();
     exit(0);
   }
@@ -116,7 +117,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
           ),
-          builder: (context, child) => Platform.isWindows
+          builder: (context, child) => isDesktop
               ? ColoredBox(
                   color: Pal.bg0,
                   child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: child)),

@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'platform.dart';
 import 'dart:io' show Platform;
 import 'models.dart';
 
@@ -106,7 +107,7 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
   if (!outbounds.any((o) => o['tag'] == 'direct')) outbounds.add({'tag': 'direct', 'protocol': 'freedom'});
   if (!outbounds.any((o) => o['tag'] == 'block')) outbounds.add({'tag': 'block', 'protocol': 'blackhole'});
 
-  final win = Platform.isWindows;
+  final win = isDesktop;
   // Windows: choose programs by process name (works for programs that use the system proxy)
   final names = <String>[
     for (final n in s.perAppList) ...[n, if (!n.toLowerCase().endsWith('.exe')) '$n.exe']

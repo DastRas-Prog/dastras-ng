@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import 'platform.dart';
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
@@ -117,7 +118,7 @@ class _AppsPageState extends State<AppsPage> {
                   ),
                 ),
               ),
-              if (Platform.isWindows)
+              if (isDesktop)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 16, 8),
                   child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -150,7 +151,7 @@ class _AppsPageState extends State<AppsPage> {
                 child: Align(
                   alignment: AlignmentDirectional.centerStart,
                   child: FilterChip(
-                    label: Text(Platform.isWindows ? tr('show_bg') : tr('show_system')),
+                    label: Text(isDesktop ? tr('show_bg') : tr('show_system')),
                     selected: widget.store.showSystemApps,
                     onSelected: (v) async {
                       setState(() => widget.store.showSystemApps = v);
@@ -192,7 +193,7 @@ class _AppsPageState extends State<AppsPage> {
                                   : Image.memory(a.icon, width: 42, height: 42, gaplessPlayback: true),
                             ),
                             title: Text(a.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-                            subtitle: Text('${a.system ? '${Platform.isWindows ? tr('bg_tag') : tr('system_tag')} · ' : ''}${a.pkg}',
+                            subtitle: Text('${a.system ? '${isDesktop ? tr('bg_tag') : tr('system_tag')} · ' : ''}${a.pkg}',
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                                 style: TextStyle(fontSize: 11.5, color: Pal.t4)),

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'platform.dart';
 import 'dart:convert';
 import 'dart:io' show Platform;
 import 'dart:math' as math;
@@ -118,7 +119,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     try {
       await store.load().timeout(const Duration(seconds: 15));
     } catch (_) {}
-    if (Platform.isWindows) {
+    if (isDesktop) {
       await WinCore.cleanupStale(); // undo anything a crashed session left behind
       // closing the window must always restore the user's proxy settings
       _exitListener = AppLifecycleListener(onExitRequested: () async {
@@ -592,7 +593,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   Future<void> _ping() async {
     if (store.nodes.isEmpty) return;
-    if ((running || starting) && !Platform.isWindows) {
+    if ((running || starting) && !isDesktop) {
       _toast(tr('disconnect_first'));
       return;
     }
@@ -777,7 +778,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       } else if (n.type == 'none') {
         label = tr('net_none');
       } else {
-        final base = n.type == 'wifi' && !Platform.isWindows ? tr('net_wifi') : tr('net_other');
+        final base = n.type == 'wifi' && !isDesktop ? tr('net_wifi') : tr('net_other');
         label = _wifiIsp == null ? base : '$base · $_wifiIsp';
         // with the VPN on we would see the VPN server, so only ask while it is off
         if (!running && !starting && DateTime.now().difference(_ispAt).inMinutes >= 5) {
@@ -1017,7 +1018,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                   icon: const Icon(Icons.content_paste_rounded, size: 18),
                   label: Text(tr('paste')),
                 ),
-                if (!Platform.isWindows) ...[
+                if (!isDesktop) ...[
                   const SizedBox(width: 8),
                   OutlinedButton.icon(
                     onPressed: () {
@@ -1646,7 +1647,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         const SizedBox(height: 16),
         FilledButton.icon(onPressed: _addSheet, icon: const Icon(Icons.add_rounded), label: Text(tr('add_config'))),
         const SizedBox(height: 4),
-        if (!Platform.isWindows)
+        if (!isDesktop)
           TextButton.icon(
             onPressed: _scanQr,
             icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),

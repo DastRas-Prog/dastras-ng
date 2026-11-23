@@ -36,18 +36,24 @@ class WinCore {
 
   // ---------- paths ----------
   static String get appDir => File(Platform.resolvedExecutable).parent.path;
-  static String get xrayDir => '$appDir\\xray';
-  static String get xrayExe => '$xrayDir\\xray.exe';
+  static String get _home => Platform.environment['HOME'] ?? Directory.systemTemp.path;
+  static String get _macRes => '${File(Platform.resolvedExecutable).parent.parent.path}/Resources/xray';
+  static String get xrayDir => Platform.isMacOS ? _macRes : '$appDir\\xray';
+  static String get xrayExe {
+    if (!Platform.isMacOS) return '$xrayDir\\xray.exe';
+    final arch = (Process.runSync('uname', ['-m']).stdout as String).trim();
+    return '$xrayDir/xray-${arch == 'arm64' ? 'arm64' : 'x64'}';
+  }
 
   static String get dataDir {
-    final base = Platform.environment['APPDATA'] ?? Directory.systemTemp.path;
-    final d = Directory('$base\\DastRasNG');
+    final base = Platform.isMacOS ? '$_home/Library/Application Support' : (Platform.environment['APPDATA'] ?? Directory.systemTemp.path);
+    final d = Directory('$base${Platform.pathSeparator}DastRasNG');
     if (!d.existsSync()) d.createSync(recursive: true);
     return d.path;
   }
 
-  static String get logPath => '$dataDir\\xray.log';
-  static String get _backupPath => '$dataDir\\proxy_backup.json';
+  static String get logPath => '$dataDir${Platform.pathSeparator}xray.log';
+  static String get _backupPath => '$dataDir${Platform.pathSeparator}proxy_backup.json';
 
   // ---------- bridge used by Core ----------
 
@@ -97,6 +103,10 @@ class WinCore {
       return 'error';
     }
     try {
+      if (Platform.isMacOS) {
+        await Process.run('chmod', ['+x', xrayExe]);
+        await Process.run('xattr', ['-dr', 'com.apple.quarantine', xrayDir]);
+      }
       await _killStale();
       final cfg = jsonDecode(config) as Map<String, dynamic>;
       socksPort = await _freePort(10808);
@@ -147,7 +157,7 @@ class WinCore {
   }
 
   static Future<bool> _launch(String configJson) async {
-    final f = File('$dataDir\\run.json');
+    final f = File('$dataDir${Platform.pathSeparator}run.json');
     await f.writeAsString(configJson);
     final p = await Process.start(
       xrayExe,
@@ -232,6 +242,12 @@ class WinCore {
 
   /// Ends only OUR xray.exe left over from a crash (never another program's).
   static Future<void> _killStale() async {
+    if (Platform.isMacOS) {
+      try {
+        await Process.run('pkill', ['-f', xrayExe]);
+      } catch (_) {}
+      return;
+    }
     try {
       final exe = xrayExe.replaceAll("'", "''");
       await Process.run('powershell', [
@@ -338,6 +354,7 @@ class WinCore {
   static Future<void> _regDel(String name) => Process.run('reg', ['delete', _inet, '/v', name, '/f']);
 
   static Future<void> _setProxy(bool on) async {
+    if (Platform.isMacOS) return _macProxy(on);
     try {
       if (on) {
         final f = File(_backupPath);
@@ -396,6 +413,15 @@ class WinCore {
 
   /// Running programs. [AppInfo.system] is true for background processes (no window).
   static Future<List<AppInfo>> listApps() async {
+    if (Platform.isMacOS) {
+      try {
+        final r = await Process.run('osascript', ['-e', 'tell application "System Events" to get name of (every process whose background only is false)']);
+        final names = (r.stdout as String).split(',').map((e) => e.trim()).where((e) => e.isNotEmpty && e != 'DastRas NG').toSet().toList()..sort();
+        return [for (final n in names) AppInfo(n, n, Uint8List(0), false)];
+      } catch (_) {
+        return [];
+      }
+    }
     try {
       Future<String> ps(String cmd) async {
         final r = await Process.run('powershell', ['-NoProfile', '-Command', '[Console]::OutputEncoding=[Text.Encoding]::UTF8; $cmd'],
@@ -427,6 +453,18 @@ class WinCore {
   // ---------- extras ----------
 
   static Future<void> setAutostart(bool on) async {
+    if (Platform.isMacOS) {
+      final f = File('$_home/Library/LaunchAgents/com.dastras.ng.plist');
+      try {
+        if (on) {
+          f.parent.createSync(recursive: true);
+          f.writeAsStringSync('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>com.dastras.ng</string><key>ProgramArguments</key><array><string>${Platform.resolvedExecutable}</string></array><key>RunAtLoad</key><true/></dict></plist>\n');
+        } else if (f.existsSync()) {
+          f.deleteSync();
+        }
+      } catch (_) {}
+      return;
+    }
     try {
       if (on) {
         await Process.run('reg', ['add', _runKey, '/v', 'DastRasNG', '/t', 'REG_SZ', '/d', '"${Platform.resolvedExecutable}"', '/f']);
@@ -438,14 +476,22 @@ class WinCore {
 
   static Future<void> openLogs() async {
     try {
-      await Process.run('explorer', [dataDir]);
+      await Process.run(Platform.isMacOS ? 'open' : 'explorer', [dataDir]);
     } catch (_) {}
   }
 
   /// Extracts the downloaded zip over the app folder after the app has closed, then restarts it.
   static Future<String> applyUpdate(String zipPath) async {
+    if (Platform.isMacOS) {
+      try {
+        await Process.run('open', [zipPath]); // opens the disk image; the user drags the app into Applications
+        return 'mac';
+      } catch (e) {
+        return 'error:$e';
+      }
+    }
     try {
-      final tmp = '$dataDir\\update';
+      final tmp = '$dataDir${Platform.pathSeparator}update';
       final dir = Directory(tmp);
       if (dir.existsSync()) dir.deleteSync(recursive: true);
       dir.createSync(recursive: true);
@@ -458,7 +504,7 @@ class WinCore {
       final subs = dir.listSync().whereType<Directory>().toList();
       final inner = subs.isNotEmpty ? subs.first.path : tmp;
       final exeName = File(Platform.resolvedExecutable).uri.pathSegments.last;
-      final cmd = File('$dataDir\\update.cmd');
+      final cmd = File('$dataDir${Platform.pathSeparator}update.cmd');
       cmd.writeAsStringSync('@echo off\r\n'
           'ping 127.0.0.1 -n 4 >nul\r\n'
           ':wait\r\n'
@@ -471,5 +517,86 @@ class WinCore {
     } catch (e) {
       return 'error:$e';
     }
+  }
+
+  // ---------- macOS system proxy (networksetup), backed up and restored ----------
+
+  static String _shq(String s) => "'${s.replaceAll("'", "'\\''")}'";
+
+  static Future<List<String>> _macServices() async {
+    final r = await Process.run('networksetup', ['-listallnetworkservices']);
+    return (r.stdout as String).split('\n').skip(1).map((e) => e.trim()).where((e) => e.isNotEmpty && !e.startsWith('*')).toList();
+  }
+
+  static Future<List<String>> _macGet(String svc, String kind) async {
+    final r = await Process.run('networksetup', ['-get$kind', svc]);
+    final m = <String, String>{};
+    for (final l in (r.stdout as String).split('\n')) {
+      final i = l.indexOf(':');
+      if (i > 0) m[l.substring(0, i).trim()] = l.substring(i + 1).trim();
+    }
+    return [(m['Enabled'] ?? 'No'), (m['Server'] ?? ''), (m['Port'] ?? '0')];
+  }
+
+  /// Runs the commands directly; if macOS asks for administrator rights, runs them all with ONE password prompt.
+  static Future<void> _macBatch(List<List<String>> cmds) async {
+    var ok = true;
+    for (final c in cmds) {
+      final r = await Process.run('networksetup', c);
+      if (r.exitCode != 0) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) return;
+    final sh = cmds.map((c) => 'networksetup ${c.map(_shq).join(' ')}').join('; ');
+    final esc = sh.replaceAll('\\', '\\\\').replaceAll('"', '\\"');
+    await Process.run('osascript', ['-e', 'do shell script "$esc" with administrator privileges']);
+  }
+
+  static Future<void> _macProxy(bool on) async {
+    try {
+      final svcs = await _macServices();
+      const kinds = ['webproxy', 'securewebproxy', 'socksfirewallproxy'];
+      if (on) {
+        final f = File(_backupPath);
+        if (!f.existsSync()) {
+          final b = <String, dynamic>{};
+          for (final s in svcs) {
+            b[s] = {for (final k in kinds) k: await _macGet(s, k)};
+          }
+          f.writeAsStringSync(jsonEncode(b));
+        }
+        final cmds = <List<String>>[];
+        for (final s in svcs) {
+          cmds.add(['-setwebproxy', s, '127.0.0.1', '$httpPort']);
+          cmds.add(['-setsecurewebproxy', s, '127.0.0.1', '$httpPort']);
+          cmds.add(['-setsocksfirewallproxy', s, '127.0.0.1', '$socksPort']);
+        }
+        await _macBatch(cmds);
+      } else {
+        final f = File(_backupPath);
+        var b = <String, dynamic>{};
+        if (f.existsSync()) {
+          try {
+            b = Map<String, dynamic>.from(jsonDecode(f.readAsStringSync()) as Map);
+          } catch (_) {}
+        }
+        final cmds = <List<String>>[];
+        for (final s in svcs) {
+          final prev = b[s] is Map ? Map<String, dynamic>.from(b[s] as Map) : <String, dynamic>{};
+          for (final k in kinds) {
+            final p = prev[k] is List ? List<String>.from((prev[k] as List).map((e) => '$e')) : const ['No', '', '0'];
+            if (p[0].toLowerCase() == 'yes' && p[1].isNotEmpty && p[2] != '0') {
+              cmds.add(['-set$k', s, p[1], p[2]]);
+            } else {
+              cmds.add(['-set${k}state', s, 'off']);
+            }
+          }
+        }
+        await _macBatch(cmds);
+        if (f.existsSync()) f.deleteSync();
+      }
+    } catch (_) {}
   }
 }

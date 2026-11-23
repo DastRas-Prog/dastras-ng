@@ -56,6 +56,7 @@ Get the newest version from the **[Releases page](https://github.com/DastRas-Pro
 | [`app-x86_64-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | Emulators, some tablets |
 | [`app-universal-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-universal-release.apk) | Works everywhere (bigger file) |
 | [`DastRas-NG-Setup.exe`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-Setup.exe) | **Windows 10 / 11 (64-bit) installer** with Start-menu and desktop shortcuts |
+| [`DastRas-NG-macOS.dmg`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-macOS.dmg) | **macOS** (Apple silicon and Intel): open, drag the app to Applications, first time right-click → Open |
 | [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | Windows portable version (extract, then run `DastRas-NG.exe`) |
 
 > **First install:** Android may show a warning for apps installed outside Google Play. Tap **Install anyway**.
@@ -143,6 +144,7 @@ Telegram channel: **[@dastras](https://t.me/dastras)** · Support: **[@xAdminist
 | [`app-x86_64-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-x86_64-release.apk) | شبیه‌ساز و بعضی تبلت‌ها |
 | [`app-universal-release.apk`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/app-universal-release.apk) | روی همه‌ی گوشی‌ها کار می‌کند (حجم بیشتر) |
 | [`DastRas-NG-Setup.exe`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-Setup.exe) | **نصب‌کننده‌ی ویندوز ۱۰ و ۱۱ (۶۴ بیتی)** همراه با شورتکات در منوی استارت و دسکتاپ |
+| [`DastRas-NG-macOS.dmg`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-macOS.dmg) | **مک** (اپل سیلیکون و اینتل): باز کنید، برنامه را به Applications بکشید، بار اول راست‌کلیک ← Open |
 | [`DastRas-NG-windows.zip`](https://github.com/DastRas-Prog/dastras-ng/releases/latest/download/DastRas-NG-windows.zip) | نسخه‌ی قابل حمل ویندوز (استخراج کنید و `DastRas-NG.exe` را اجرا کنید) |
 
 > **نصب اول:** اندروید برای برنامه‌هایی که از گوگل‌پلی نصب نشده‌اند هشدار می‌دهد. گزینه‌ی **Install anyway** را بزنید.

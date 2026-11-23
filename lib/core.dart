@@ -21,7 +21,7 @@ class Traffic {
 /// Bridge to the native side: Android (libXray + VpnService) or Windows (xray.exe + system proxy).
 class Core {
   static const _ch = MethodChannel('dastras/core');
-  static bool get _win => Platform.isWindows;
+  static bool get _win => Platform.isWindows || Platform.isMacOS;
 
   /// Calls libXray's single entry point (apiVersion 3).
   static Future<Map<String, dynamic>> invoke(String method, Map<String, dynamic> payload) async {
@@ -86,7 +86,7 @@ class Core {
   }
 
   static Future<String> abi() async {
-    if (_win) return 'windows';
+    if (_win) return Platform.isMacOS ? 'macos' : 'windows';
     return (await _ch.invokeMethod<String>('abi')) ?? 'arm64-v8a';
   }
 

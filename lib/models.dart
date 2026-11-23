@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'platform.dart';
 import 'dart:io' show Platform;
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -232,7 +233,7 @@ class Store {
   // Sensitive data (servers, subscription links) goes to the Android Keystore-backed
   // secure storage; falls back to plain prefs only if secure storage is unavailable.
   Future<String?> _getSecret(String k) async {
-    if (Platform.isWindows) return _p.getString(k);
+    if (isDesktop) return _p.getString(k);
     try {
       final v = await _sec.read(key: k).timeout(const Duration(seconds: 4));
       if (v != null) return v;
@@ -241,7 +242,7 @@ class Store {
   }
 
   Future<void> _putSecret(String k, String v) async {
-    if (Platform.isWindows) {
+    if (isDesktop) {
       await _p.setString(k, v);
       return;
     }
@@ -296,7 +297,7 @@ class Store {
     dns = _p.getString('dns') ?? 'google';
     ipv6 = _p.getBool('ipv6') ?? false;
     announceOn = _p.getBool('announceOn') ?? true;
-    showSystemApps = _p.getBool('showSystemApps') ?? !Platform.isWindows;
+    showSystemApps = _p.getBool('showSystemApps') ?? !isDesktop;
     showNet = _p.getBool('showNet') ?? true;
     tipHidden = _p.getBool('tipHidden') ?? false;
     try {
