@@ -87,7 +87,7 @@ jobs:
           cp -r ../lib .
           mkdir -p assets android/app/libs
           cp ../assets/geoip.dat ../assets/geosite.dat ../assets/logo.png ../assets/xray_version.txt assets/
-          cp -r ../assets/flags assets/
+          cp ../assets/flags.bin ../assets/tray.ico ../assets/tray.png assets/
           mkdir -p assets/fonts
           cp ../assets/fonts/*.ttf assets/fonts/ 2>/dev/null || true
           python3 ../scripts/add_font.py
@@ -177,6 +177,7 @@ jobs:
         if: github.ref == 'refs/heads/main'
         uses: softprops/action-gh-release@v2
         with:
+          body_path: RELEASE_NOTES.md
           tag_name: build-${{ github.run_number }}
           name: DastRas NG build ${{ github.run_number }}
           body: |
@@ -218,7 +219,7 @@ jobs:
           mkdir -p assets
           cp ../assets/logo.png assets/
           cp ../xray_version.txt assets/
-          cp -r ../assets/flags assets/
+          cp ../assets/flags.bin ../assets/tray.ico ../assets/tray.png assets/
           mkdir -p assets/fonts
           cp ../assets/fonts/*.ttf assets/fonts/ 2>/dev/null || true
           python ../scripts/add_font.py
@@ -244,8 +245,18 @@ jobs:
           }
           STUB
           printf '\ndependency_overrides:\n  flutter_secure_storage:\n    path: stubs/flutter_secure_storage\n' >> pubspec.yaml
-          flutter pub get
-          flutter build windows --release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
+          ARGS="--release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}"
+          # try with the system-tray plugins first; if they do not build, build without the tray icon
+          cp ../scripts/desktop_shell_real.dart lib/desktop_shell.dart
+          if flutter pub add tray_manager:^0.2.4 window_manager:^0.4.3 && flutter pub get && flutter build windows $ARGS; then
+            echo "Built with the tray icon"
+          else
+            echo "Tray plugins failed - building without the tray icon"
+            cp ../lib/desktop_shell.dart lib/desktop_shell.dart
+            sed -i '/tray_manager/d;/window_manager/d' pubspec.yaml
+            flutter pub get
+            flutter build windows $ARGS
+          fi
 
       - name: Add Xray core and geo data, then zip
         shell: pwsh
@@ -330,7 +341,7 @@ jobs:
           mkdir -p assets
           cp ../assets/logo.png assets/
           cp ../xray_version.txt assets/
-          cp -r ../assets/flags assets/
+          cp ../assets/flags.bin ../assets/tray.ico ../assets/tray.png assets/
           : > assets/geoip.dat
           : > assets/geosite.dat
           mkdir -p assets/fonts
@@ -362,8 +373,18 @@ jobs:
           }
           STUB
           printf '\ndependency_overrides:\n  flutter_secure_storage:\n    path: stubs/flutter_secure_storage\n' >> pubspec.yaml
-          flutter pub get
-          flutter build macos --release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
+          ARGS="--release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}"
+          # try with the system-tray plugins first; if they do not build, build without the tray icon
+          cp ../scripts/desktop_shell_real.dart lib/desktop_shell.dart
+          if flutter pub add tray_manager:^0.2.4 window_manager:^0.4.3 && flutter pub get && flutter build macos $ARGS; then
+            echo "Built with the tray icon"
+          else
+            echo "Tray plugins failed - building without the tray icon"
+            cp ../lib/desktop_shell.dart lib/desktop_shell.dart
+            sed -i '' '/tray_manager/d;/window_manager/d' pubspec.yaml
+            flutter pub get
+            flutter build macos $ARGS
+          fi
 
       - name: Bundle Xray, sign and make the disk image
         run: |
