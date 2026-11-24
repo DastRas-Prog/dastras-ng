@@ -45,7 +45,7 @@ Name: "{autoprograms}\DastRas NG"; Filename: "{app}\{#MyAppExe}"
 Name: "{autodesktop}\DastRas NG"; Filename: "{app}\{#MyAppExe}"; Tasks: desktopicon
 
 [Registry]
-Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "DastRasNG"; ValueData: """{app}\{#MyAppExe}"""; Flags: uninsdeletevalue; Tasks: startup
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "DastRasNG"; ValueData: """{app}\{#MyAppExe}"" --minimized"; Flags: uninsdeletevalue; Tasks: startup
 
 [Run]
 Filename: "{app}\{#MyAppExe}"; Description: "Launch DastRas NG"; Flags: nowait postinstall skipifsilent
