@@ -458,7 +458,7 @@ class WinCore {
       try {
         if (on) {
           f.parent.createSync(recursive: true);
-          f.writeAsStringSync('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>com.dastras.ng</string><key>ProgramArguments</key><array><string>${Platform.resolvedExecutable}</string></array><key>RunAtLoad</key><true/></dict></plist>\n');
+          f.writeAsStringSync('<?xml version="1.0" encoding="UTF-8"?>\n<plist version="1.0"><dict><key>Label</key><string>com.dastras.ng</string><key>ProgramArguments</key><array><string>${Platform.resolvedExecutable}</string><string>--minimized</string></array><key>RunAtLoad</key><true/></dict></plist>\n');
         } else if (f.existsSync()) {
           f.deleteSync();
         }
@@ -467,7 +467,7 @@ class WinCore {
     }
     try {
       if (on) {
-        await Process.run('reg', ['add', _runKey, '/v', 'DastRasNG', '/t', 'REG_SZ', '/d', '"${Platform.resolvedExecutable}"', '/f']);
+        await Process.run('reg', ['add', _runKey, '/v', 'DastRasNG', '/t', 'REG_SZ', '/d', '"${Platform.resolvedExecutable}" --minimized', '/f']);
       } else {
         await Process.run('reg', ['delete', _runKey, '/v', 'DastRasNG', '/f']);
       }
@@ -598,5 +598,213 @@ class WinCore {
         if (f.existsSync()) f.deleteSync();
       }
     } catch (_) {}
+  }
+
+  // ---------- speed meter: works with or without the VPN ----------
+
+  static int? _widgetPid;
+
+  static const String _widgetScript = r'''param([int]$ParentPid = 0, [string]$Unit = 'bytes', [string]$PosFile = '')
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+[System.Windows.Forms.Application]::EnableVisualStyles()
+
+function Fmt([double]$bps) {
+  if ($Unit -eq 'bits') {
+    $b = $bps * 8
+    if ($b -ge 1e9) { return ('{0:N2} Gbps' -f ($b / 1e9)) }
+    if ($b -ge 1e6) { return ('{0:N2} Mbps' -f ($b / 1e6)) }
+    return ('{0:N0} Kbps' -f ($b / 1e3))
+  }
+  if ($bps -ge 1073741824) { return ('{0:N2} GB/s' -f ($bps / 1073741824)) }
+  if ($bps -ge 1048576) { return ('{0:N2} MB/s' -f ($bps / 1048576)) }
+  return ('{0:N0} KB/s' -f ($bps / 1024))
+}
+
+function Totals {
+  $rx = [int64]0
+  $tx = [int64]0
+  foreach ($n in [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces()) {
+    if ($n.OperationalStatus -ne 'Up') { continue }
+    if ($n.NetworkInterfaceType -eq 'Loopback' -or $n.NetworkInterfaceType -eq 'Tunnel') { continue }
+    if ($n.Description -match 'TAP-|Wintun|\bTUN\b|VPN|Virtual|vEthernet|VMware|VirtualBox|Hyper-V|Npcap|Bluetooth') { continue }
+    $s = $n.GetIPv4Statistics()
+    $rx += $s.BytesReceived
+    $tx += $s.BytesSent
+  }
+  return @($rx, $tx)
+}
+
+$f = New-Object System.Windows.Forms.Form
+$f.FormBorderStyle = 'None'
+$f.TopMost = $true
+$f.ShowInTaskbar = $false
+$f.StartPosition = 'Manual'
+$f.Size = New-Object System.Drawing.Size(170, 46)
+$f.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 42)
+$f.Opacity = 0.9
+
+$font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
+$down = New-Object System.Windows.Forms.Label
+$down.AutoSize = $false
+$down.Location = New-Object System.Drawing.Point(8, 4)
+$down.Size = New-Object System.Drawing.Size(154, 19)
+$down.Font = $font
+$down.ForeColor = [System.Drawing.Color]::FromArgb(80, 220, 170)
+$down.Text = ([string][char]0x2193) + ' 0 KB/s'
+$up = New-Object System.Windows.Forms.Label
+$up.AutoSize = $false
+$up.Location = New-Object System.Drawing.Point(8, 23)
+$up.Size = New-Object System.Drawing.Size(154, 19)
+$up.Font = $font
+$up.ForeColor = [System.Drawing.Color]::FromArgb(255, 170, 70)
+$up.Text = ([string][char]0x2191) + ' 0 KB/s'
+$f.Controls.Add($down)
+$f.Controls.Add($up)
+
+# remembered position, otherwise the bottom-right corner above the taskbar
+$wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
+$x = $wa.Right - $f.Width - 12
+$y = $wa.Bottom - $f.Height - 12
+if ($PosFile -ne '' -and (Test-Path $PosFile)) {
+  try {
+    $p = (Get-Content $PosFile -Raw).Trim().Split(',')
+    $px = [int]$p[0]
+    $py = [int]$p[1]
+    $vs = [System.Windows.Forms.SystemInformation]::VirtualScreen
+    if ($px -ge $vs.Left -and $px -le ($vs.Right - 40) -and $py -ge $vs.Top -and $py -le ($vs.Bottom - 30)) { $x = $px; $y = $py }
+  } catch {}
+}
+$f.Location = New-Object System.Drawing.Point($x, $y)
+
+# drag with the left mouse button
+$script:drag = $false
+$onDown = {
+  if ($_.Button -eq 'Left') {
+    $script:drag = $true
+    $script:c0 = [System.Windows.Forms.Cursor]::Position
+    $script:l0 = $f.Location
+  }
+}
+$onMove = {
+  if ($script:drag) {
+    $c = [System.Windows.Forms.Cursor]::Position
+    $f.Location = New-Object System.Drawing.Point(($script:l0.X + $c.X - $script:c0.X), ($script:l0.Y + $c.Y - $script:c0.Y))
+  }
+}
+$onUp = {
+  if ($script:drag) {
+    $script:drag = $false
+    if ($PosFile -ne '') { try { Set-Content -Path $PosFile -Value ('{0},{1}' -f $f.Location.X, $f.Location.Y) } catch {} }
+  }
+}
+foreach ($c in @($f, $down, $up)) {
+  $c.Add_MouseDown($onDown)
+  $c.Add_MouseMove($onMove)
+  $c.Add_MouseUp($onUp)
+}
+
+$menu = New-Object System.Windows.Forms.ContextMenuStrip
+$item = $menu.Items.Add('Close / ' + [string][char]0x0628 + [char]0x0633 + [char]0x062A + [char]0x0646)
+$item.Add_Click({ $f.Close() })
+$f.ContextMenuStrip = $menu
+$down.ContextMenuStrip = $menu
+$up.ContextMenuStrip = $menu
+
+$script:last = Totals
+$script:sw = [System.Diagnostics.Stopwatch]::StartNew()
+$script:tick = 0
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 1000
+$timer.Add_Tick({
+  $script:tick++
+  if ($ParentPid -gt 0 -and ($script:tick % 5) -eq 0) {
+    if (-not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { $f.Close(); return }
+  }
+  $now = Totals
+  $dt = $script:sw.Elapsed.TotalSeconds
+  $script:sw.Restart()
+  if ($dt -le 0) { return }
+  $dr = ($now[0] - $script:last[0]) / $dt
+  $du = ($now[1] - $script:last[1]) / $dt
+  if ($dr -lt 0) { $dr = 0 }
+  if ($du -lt 0) { $du = 0 }
+  $script:last = $now
+  $down.Text = ([string][char]0x2193) + ' ' + (Fmt $dr)
+  $up.Text = ([string][char]0x2191) + ' ' + (Fmt $du)
+})
+$timer.Start()
+[System.Windows.Forms.Application]::Run($f)
+''';
+
+  /// Floating always-on-top speed meter (Windows). Shows the real speed of the network cards.
+  static Future<void> startWidget({bool bits = false}) async {
+    if (!Platform.isWindows) return;
+    await stopWidget();
+    try {
+      final script = File('$dataDir${Platform.pathSeparator}speed_widget.ps1');
+      // a BOM lets Windows PowerShell read the non-ASCII characters correctly
+      script.writeAsBytesSync([0xEF, 0xBB, 0xBF, ...utf8.encode(_widgetScript)]);
+      final p = await Process.start(
+        'powershell',
+        [
+          '-NoProfile',
+          '-ExecutionPolicy',
+          'Bypass',
+          '-WindowStyle',
+          'Hidden',
+          '-File',
+          script.path,
+          '-ParentPid',
+          '$pid',
+          '-Unit',
+          bits ? 'bits' : 'bytes',
+          '-PosFile',
+          '$dataDir${Platform.pathSeparator}widget_pos.txt',
+        ],
+        mode: ProcessStartMode.detached,
+      );
+      _widgetPid = p.pid;
+    } catch (_) {}
+  }
+
+  static Future<void> stopWidget() async {
+    final p = _widgetPid;
+    _widgetPid = null;
+    if (p != null) {
+      try {
+        Process.killPid(p);
+      } catch (_) {}
+    }
+  }
+
+  /// Total bytes received / sent by the machine (all real network cards), or null if unknown.
+  static Future<(int, int)?> netTotals() async {
+    try {
+      if (Platform.isWindows) {
+        final r = await Process.run('netstat', ['-e']);
+        final m = RegExp(r'^\s*\S+\s+(\d+)\s+(\d+)\s*$', multiLine: true).firstMatch(r.stdout as String);
+        if (m == null) return null;
+        return (int.parse(m.group(1)!), int.parse(m.group(2)!));
+      }
+      if (Platform.isMacOS) {
+        final r = await Process.run('netstat', ['-ib']);
+        var rx = 0, tx = 0;
+        for (final line in (r.stdout as String).split('\n')) {
+          final t = line.trim().split(RegExp(r'\s+'));
+          if (t.length < 10 || !t[2].startsWith('<Link#')) continue;
+          final name = t[0];
+          if (name.startsWith('lo') || name.startsWith('utun') || name.startsWith('bridge') || name.startsWith('awdl') || name.startsWith('llw') || name.startsWith('gif') || name.startsWith('stf') || name.startsWith('ap')) continue;
+          final ib = int.tryParse(t[t.length - 5]);
+          final ob = int.tryParse(t[t.length - 2]);
+          if (ib != null && ob != null) {
+            rx += ib;
+            tx += ob;
+          }
+        }
+        return (rx, tx);
+      }
+    } catch (_) {}
+    return null;
   }
 }

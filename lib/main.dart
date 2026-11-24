@@ -7,6 +7,8 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'desktop_shell.dart';
+import 'flags.dart';
 import 'home.dart';
 import 'lang.dart';
 import 'pal.dart';
@@ -54,11 +56,13 @@ Future<void> openAny(String url) async {
 
 Future<void> main(List<String> args) async {
   WidgetsFlutterBinding.ensureInitialized();
+  await FlagPack.load();
   // run by the uninstaller: give the user's proxy settings back, then quit
   if (isDesktop && args.contains('--cleanup')) {
     await WinCore.cleanupStale();
     exit(0);
   }
+  if (isDesktop) await DesktopShell.init(startHidden: args.contains('--minimized'));
   runApp(const App());
 }
 
@@ -109,6 +113,7 @@ class _AppState extends State<App> with WidgetsBindingObserver {
             useMaterial3: true,
             brightness: dark ? Brightness.dark : Brightness.light,
             fontFamily: 'MiSans', // used when the font files are bundled, otherwise the system font
+            fontFamilyFallback: const ['MiSans', 'Vazirmatn', 'Noto Sans Arabic', 'Noto Naskh Arabic', 'Roboto'],
             colorSchemeSeed: Pal.accent,
             scaffoldBackgroundColor: Pal.bg0,
             dialogTheme: DialogThemeData(backgroundColor: Pal.dialog),
@@ -117,12 +122,20 @@ class _AppState extends State<App> with WidgetsBindingObserver {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
             ),
           ),
-          builder: (context, child) => isDesktop
-              ? ColoredBox(
-                  color: Pal.bg0,
-                  child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: child)),
-                )
-              : child!,
+          builder: (context, child) {
+            // a huge system font size must not break the layout on some phones
+            final mq = MediaQuery.of(context);
+            final fixed = MediaQuery(
+              data: mq.copyWith(textScaler: mq.textScaler.clamp(minScaleFactor: 0.9, maxScaleFactor: 1.15)),
+              child: child!,
+            );
+            return isDesktop
+                ? ColoredBox(
+                    color: Pal.bg0,
+                    child: Center(child: ConstrainedBox(constraints: const BoxConstraints(maxWidth: 560), child: fixed)),
+                  )
+                : fixed;
+          },
           home: const Gate(),
         );
       },
@@ -283,9 +296,7 @@ class WelcomePage extends StatelessWidget {
                           onPressed: () async {
                             await Clipboard.setData(const ClipboardData(text: kChannelUrl));
                             if (context.mounted) {
-                              ScaffoldMessenger.of(context)
-                                ..hideCurrentSnackBar()
-                                ..showSnackBar(SnackBar(content: Text(tr('copied'))));
+                              Toast.show(context, tr('copied'));
                             }
                           },
                         ),

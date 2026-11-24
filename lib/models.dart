@@ -37,7 +37,7 @@ class Node {
   bool tested = false;
   Node(this.ob, this.src);
 
-  int? get delay => pingMode == 'real' ? real : tcp;
+  int? get delay => pingMode == 'real' ? real : (tcp ?? real);
 
   String get name => (ob['tag'] ?? ob['protocol'] ?? 'node').toString();
   String get key => '$name|$address';
@@ -110,7 +110,8 @@ class Node {
   String? get countryCode {
     final f = flag;
     if (f == null) return null;
-    return String.fromCharCodes(f.runes.map((x) => x - 0x1F1E6 + 97));
+    final cc = String.fromCharCodes(f.runes.map((x) => x - 0x1F1E6 + 97));
+    return cc == 'uk' ? 'gb' : cc;
   }
 
   /// Flag emoji from a leading country code ("CH 2") or an emoji in the name.
@@ -146,9 +147,12 @@ class Store {
   List<Node> nodes = [];
   List<String> subs = [];
   int selected = 0;
+  String lastKey = ''; // the server the user was last connected to
   /// Per subscription: {t: title, u: used, tot: total, e: expire}
   Map<String, Map<String, dynamic>> subMeta = {};
   bool showNet = true;
+  bool speedWidget = true; // Windows: floating speed meter
+  bool speedBits = false; // show Mbps instead of MB/s
   bool tipHidden = false;
 
   SubInfo? infoFor(String url) {
@@ -182,7 +186,7 @@ class Store {
   bool bypassIran = true;
   bool autoSelect = true;
   bool autoUpdate = true;
-  int updateEveryMin = 180; // 0 = only the first open of each day
+  int updateEveryMin = 60; // 0 = only when the app opens / connects
   bool connectOnOpen = false;
   bool clipboardWatch = true;
   bool httpsOnly = true;
@@ -213,7 +217,7 @@ class Store {
     bypassIran = true;
     autoSelect = true;
     autoUpdate = true;
-    updateEveryMin = 180;
+    updateEveryMin = 60;
     connectOnOpen = false;
     clipboardWatch = true;
     httpsOnly = true;
@@ -288,7 +292,11 @@ class Store {
     bypassIran = _p.getBool('bypassIran') ?? true;
     autoSelect = _p.getBool('autoSelect') ?? true;
     autoUpdate = _p.getBool('autoUpdate') ?? true;
-    updateEveryMin = _p.getInt('updateEveryMin') ?? 180;
+    updateEveryMin = _p.getInt('updateEveryMin') ?? 60;
+    if (!(_p.getBool('updMig2') ?? false)) {
+      updateEveryMin = 60; // new default: every hour
+      _p.setBool('updMig2', true);
+    }
     connectOnOpen = _p.getBool('connectOnOpen') ?? false;
     clipboardWatch = _p.getBool('clipboardWatch') ?? true;
     httpsOnly = _p.getBool('httpsOnly') ?? true;
@@ -299,6 +307,8 @@ class Store {
     announceOn = _p.getBool('announceOn') ?? true;
     showSystemApps = _p.getBool('showSystemApps') ?? !isDesktop;
     showNet = _p.getBool('showNet') ?? true;
+    speedWidget = _p.getBool('speedWidget') ?? true;
+    speedBits = _p.getBool('speedBits') ?? false;
     tipHidden = _p.getBool('tipHidden') ?? false;
     try {
       subMeta = (jsonDecode(_p.getString('subMeta') ?? '{}') as Map)
@@ -322,6 +332,11 @@ class Store {
     blockQuic = _p.getBool('blockQuic') ?? true;
     mtu = _p.getInt('mtu') ?? 1500;
 
+    lastKey = _p.getString('lastKey') ?? '';
+    if (lastKey.isNotEmpty) {
+      final li = nodes.indexWhere((n) => n.key == lastKey);
+      if (li >= 0) selected = li;
+    }
     if (selected >= nodes.length) selected = 0;
     Node.pingMode = pingMode;
   }
@@ -333,6 +348,7 @@ class Store {
     await _p.remove('subs');
     await _p.setInt('selected', selected);
     await _p.setInt('updatedMs', updatedMs);
+    await _p.setString('lastKey', lastKey);
     await _p.setString('lastClip', lastClip);
     await _p.setString('subTitle', subTitle);
     await _p.setString('perAppMode', perAppMode);
@@ -358,6 +374,8 @@ class Store {
     await _p.setBool('announceOn', announceOn);
     await _p.setBool('showSystemApps', showSystemApps);
     await _p.setBool('showNet', showNet);
+    await _p.setBool('speedWidget', speedWidget);
+    await _p.setBool('speedBits', speedBits);
     await _p.setBool('tipHidden', tipHidden);
     await _p.setString('subMeta', jsonEncode(subMeta));
     await _p.setBool('winAutostart', winAutostart);

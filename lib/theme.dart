@@ -1,8 +1,11 @@
+import 'dart:async';
 import 'dart:math' as math;
+import 'flags.dart';
+import 'platform.dart';
 import 'package:flutter/material.dart';
 import 'pal.dart';
 
-/// Country flag image (Windows can not draw flag emoji, so images are bundled).
+/// Country flag: bundled image (Windows can not draw flag emoji); on phones the emoji is the fallback.
 class FlagIcon extends StatelessWidget {
   final String? code;
   final double size;
@@ -11,13 +14,102 @@ class FlagIcon extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fallback = Icon(Icons.public_rounded, color: Pal.t3, size: size);
-    if (code == null) return fallback;
-    return Image.asset(
-      'assets/flags/$code.png',
-      width: size,
-      height: size,
-      fit: BoxFit.contain,
-      errorBuilder: (_, __, ___) => fallback,
+    final c = code;
+    if (c == null) return fallback;
+    final bytes = FlagPack.get(c);
+    if (bytes != null) {
+      return Image.memory(bytes, width: size, height: size, fit: BoxFit.contain, gaplessPlayback: true);
+    }
+    if (!isDesktop && c.length == 2) {
+      final emoji = String.fromCharCodes(c.toUpperCase().codeUnits.map((x) => 0x1F1E6 + x - 65));
+      return Text(emoji, style: TextStyle(fontSize: size * 0.85));
+    }
+    return fallback;
+  }
+}
+
+/// Short message at the TOP of the screen: fades in, stays a moment, fades out.
+class Toast {
+  static OverlayEntry? _entry;
+  static Timer? _timer;
+
+  static void show(BuildContext context, String msg, {int ms = 1600}) {
+    final overlay = Overlay.maybeOf(context, rootOverlay: true);
+    if (overlay == null) return;
+    _timer?.cancel();
+    _entry?.remove();
+    final key = GlobalKey<_ToastViewState>();
+    final entry = OverlayEntry(builder: (_) => _ToastView(key: key, msg: msg));
+    _entry = entry;
+    overlay.insert(entry);
+    _timer = Timer(Duration(milliseconds: ms), () async {
+      await key.currentState?.hide();
+      if (_entry == entry) {
+        entry.remove();
+        _entry = null;
+      }
+    });
+  }
+}
+
+class _ToastView extends StatefulWidget {
+  final String msg;
+  const _ToastView({super.key, required this.msg});
+  @override
+  State<_ToastView> createState() => _ToastViewState();
+}
+
+class _ToastViewState extends State<_ToastView> with SingleTickerProviderStateMixin {
+  late final AnimationController _c = AnimationController(vsync: this, duration: const Duration(milliseconds: 220))..forward();
+
+  Future<void> hide() async {
+    if (mounted) await _c.reverse();
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final top = MediaQuery.of(context).padding.top + 10;
+    return Positioned(
+      top: top,
+      left: 0,
+      right: 0,
+      child: IgnorePointer(
+        child: Material(
+          type: MaterialType.transparency,
+          child: Center(
+            child: FadeTransition(
+              opacity: _c,
+              child: SlideTransition(
+                position: Tween<Offset>(begin: const Offset(0, -0.4), end: Offset.zero)
+                    .animate(CurvedAnimation(parent: _c, curve: Curves.easeOutCubic)),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 480),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 20),
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 11),
+                    decoration: BoxDecoration(
+                      color: const Color(0xEB1E2638),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: const [BoxShadow(color: Color(0x33000000), blurRadius: 14, offset: Offset(0, 4))],
+                    ),
+                    child: Text(
+                      widget.msg,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white, fontSize: 13.5, height: 1.4, fontWeight: FontWeight.w500),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

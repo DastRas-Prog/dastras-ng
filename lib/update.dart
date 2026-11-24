@@ -11,7 +11,7 @@ import 'theme.dart';
 
 /// Injected by the build (GitHub run number). 0 = local/dev build.
 const int kBuild = int.fromEnvironment('BUILD_NUMBER', defaultValue: 0);
-const String kVersion = '2.4.0';
+const String kVersion = '2.7.0';
 const String kRepo = 'DastRas-Prog/dastras-ng';
 
 /// "v1.260327.1-0.2026..." or "Xray 26.3.27 (...)" -> "26.3.27"

@@ -1,7 +1,7 @@
 name: ng
 description: DastRas NG
 publish_to: 'none'
-version: 2.4.0+20
+version: 2.7.0+23
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -25,5 +25,7 @@ flutter:
     - assets/geoip.dat
     - assets/geosite.dat
     - assets/logo.png
-    - assets/flags/
+    - assets/flags.bin
+    - assets/tray.ico
+    - assets/tray.png
     - assets/xray_version.txt

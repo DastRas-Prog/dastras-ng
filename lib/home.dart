@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'desktop_shell.dart';
 import 'platform.dart';
 import 'dart:convert';
 import 'dart:io' show Platform;
@@ -110,6 +111,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && ready) {
       _detectNet();
+      _maybeRefresh();
       _checkClipboard();
       _checkAnn();
     }
@@ -121,9 +123,15 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } catch (_) {}
     if (isDesktop) {
       await WinCore.cleanupStale(); // undo anything a crashed session left behind
+      DesktopShell.handlers(onToggle: () => _toggle(), onExit: () async {
+        await Core.stop();
+        await WinCore.stopWidget();
+      });
+      if (Platform.isWindows && store.speedWidget) WinCore.startWidget(bits: store.speedBits);
       // closing the window must always restore the user's proxy settings
       _exitListener = AppLifecycleListener(onExitRequested: () async {
         await Core.stop();
+        await WinCore.stopWidget();
         return AppExitResponse.exit;
       });
       // the core could not be revived: move on to the next server
@@ -132,7 +140,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         for (var k = 1; k <= store.nodes.length; k++) {
           final i = (store.selected + k) % store.nodes.length;
           if (!store.nodes[i].isInfo) {
-            _select(i);
+            _select(i, user: false);
             break;
           }
         }
@@ -150,11 +158,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     _checkClipboard();
     _detectNet();
     _checkWarn();
-    if (_newDay) {
-      _refreshSubs(silent: true);
-    } else {
-      _maybeRefresh();
-    }
+    // every time the app opens
+    if (store.autoUpdate && store.subs.isNotEmpty) _refreshSubs(silent: true);
     _checkAnn();
     Future.delayed(const Duration(seconds: 4), _checkAppUpdate);
     refreshTimer = Timer.periodic(const Duration(minutes: 2), (_) {
@@ -274,6 +279,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Future<void> _poll() async {
+    if (isDesktop) _sampleNet();
     try {
       await _pollInner();
     } catch (_) {}
@@ -298,6 +304,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       connectedAt = null;
     }
     if (s == 'stopped' && status != 'stopped') _detectNet();
+    if (isDesktop && (s == 'running') != (status == 'running')) DesktopShell.setConnected(s == 'running');
+    if (s == 'running' && status != 'running' && store.nodes.isNotEmpty && store.selected < store.nodes.length) {
+      store.lastKey = store.nodes[store.selected].key; // remember the server we connected to
+      store.save();
+    }
     if (s != status || s == 'running' || t.down != traffic.down || t.up != traffic.up) {
       setState(() {
         status = s;
@@ -323,9 +334,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   void _toast(String m) {
     if (!mounted) return;
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(m)));
+    Toast.show(context, m, ms: m.length > 48 ? 3200 : 1600);
   }
 
   // ---------- connect flow ----------
@@ -346,11 +355,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     preparing = true;
     cancel = false;
     try {
-      // 1) refresh the subscription only if it is older than 3 hours
-      if (_stale) {
+      // 1) refresh the subscription every time the user connects (a slow or blocked address never holds the connection back)
+      if (store.autoUpdate && store.subs.isNotEmpty) {
         setState(() => phase = 'updating');
         try {
-          await _maybeRefresh().timeout(const Duration(seconds: 15));
+          await _refreshSubs(silent: true).timeout(const Duration(seconds: 8));
         } catch (_) {}
       }
       if (cancel) return;
@@ -400,11 +409,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   /// Tapping another server: if already connected, switch to it automatically.
   /// Tapping a server makes it the manual choice and connects to it right away.
-  Future<void> _select(int i) async {
+  Future<void> _select(int i, {bool user = true}) async {
+    if (i < 0 || i >= store.nodes.length || store.nodes[i].isInfo) return; // account-info entries are not servers
     HapticFeedback.selectionClick();
     final changed = i != store.selected;
     store.selected = i;
-    store.autoSelect = false; // choosing a server yourself means manual mode
+    if (user) store.autoSelect = false; // choosing a server yourself means manual mode
+    store.lastKey = store.nodes[i].key;
     await store.save();
     if (mounted) setState(() {});
     if (preparing) return;
@@ -453,7 +464,13 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (cand.isEmpty) return;
 
     cand.sort((a, b) => (nodes[a].stat?.score ?? 5000).compareTo(nodes[b].stat?.score ?? 5000));
+    final tcpDead = <int>[
+      for (var i = 0; i < nodes.length; i++)
+        if (!nodes[i].isInfo && nodes[i].stat != null && nodes[i].stat!.ok == 0) i
+    ];
     cand = cand.take(5).toList();
+    // a silent TCP port does not mean a dead server (QUIC/HTTP3 transports): let a few compete in the real test
+    if (!isDesktop) cand.addAll(tcpDead.where((i) => !cand.contains(i)).take(3));
 
     int best = cand.first;
     try {
@@ -464,7 +481,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         n.real = real[k];
         if (real[k] == null) continue;
         final jitter = n.stat == null ? 0 : (n.stat!.max - n.stat!.min);
-        final score = real[k]! + jitter * 2.0 + ((n.stat?.total ?? 0) - (n.stat?.ok ?? 0)) * 500;
+        final score = real[k]! + jitter * 2.0 + ((n.stat?.ok ?? 1) == 0 ? 0 : ((n.stat?.total ?? 0) - (n.stat?.ok ?? 0))) * 500;
         if (score < bestScore) {
           bestScore = score;
           best = cand[k];
@@ -612,6 +629,21 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       await tcpPingAll(store.nodes, samples: 3, onResult: () {
         if (mounted) setState(() {});
       });
+      if (store.pingMode != 'real' && !isDesktop && !(running || starting)) {
+        final dead = store.nodes.where((n) => !n.isInfo && n.tcp == null).toList();
+        if (dead.isNotEmpty) {
+          for (final n in dead) {
+            n.tested = false;
+          }
+          if (mounted) setState(() {});
+          await pingReal(dead, store.testUrl, onResult: () {
+            if (mounted) setState(() {});
+          });
+          for (final n in dead) {
+            n.tested = true;
+          }
+        }
+      }
       if (store.pingMode == 'real') {
         if (running || starting) {
           _toast(tr('disconnect_first'));
@@ -794,14 +826,81 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  // speed of the whole machine (desktop), independent of the VPN
+  int? _lastRx, _lastTx;
+  DateTime? _lastAt;
+  double _rxBps = 0, _txBps = 0;
+  bool _sampling = false;
+  int _tipTick = 0;
+
+  String _bps(double v) {
+    if (store.speedBits) {
+      final b = v * 8;
+      if (b >= 1e9) return '${(b / 1e9).toStringAsFixed(2)} Gbps';
+      if (b >= 1e6) return '${(b / 1e6).toStringAsFixed(2)} Mbps';
+      return '${(b / 1e3).toStringAsFixed(0)} Kbps';
+    }
+    if (v >= 1073741824) return '${(v / 1073741824).toStringAsFixed(2)} GB/s';
+    if (v >= 1048576) return '${(v / 1048576).toStringAsFixed(2)} MB/s';
+    return '${(v / 1024).toStringAsFixed(0)} KB/s';
+  }
+
+  Future<void> _sampleNet() async {
+    if (_sampling) return;
+    _sampling = true;
+    try {
+      final t = await WinCore.netTotals();
+      if (t == null) return;
+      final now = DateTime.now();
+      if (_lastRx != null && _lastTx != null && _lastAt != null) {
+        final dt = now.difference(_lastAt!).inMilliseconds / 1000;
+        if (dt > 0) {
+          var d = t.$1 - _lastRx!;
+          var u = t.$2 - _lastTx!;
+          if (d < 0) d += 4294967296; // 32-bit counter wrapped
+          if (u < 0) u += 4294967296;
+          _rxBps = d / dt;
+          _txBps = u / dt;
+        }
+      }
+      _lastRx = t.$1;
+      _lastTx = t.$2;
+      _lastAt = now;
+      if (mounted) setState(() {});
+      if (++_tipTick % 2 == 0) DesktopShell.setTip('DastRas NG   ↓ ${_bps(_rxBps)}   ↑ ${_bps(_txBps)}');
+    } finally {
+      _sampling = false;
+    }
+  }
+
   Widget _netChip() {
-    if (_netLabel.isEmpty) return const SizedBox.shrink();
+    final hasLabel = _netLabel.isNotEmpty;
+    if (!hasLabel && !isDesktop) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
-        const SizedBox(width: 6),
-        Text('${tr('network_now')}: $_netLabel', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        if (hasLabel)
+          Row(mainAxisSize: MainAxisSize.min, children: [
+            Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
+            const SizedBox(width: 6),
+            Text('${tr('network_now')}: $_netLabel', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+          ]),
+        if (isDesktop)
+          Padding(
+            padding: const EdgeInsets.only(top: 4),
+            child: Directionality(
+              textDirection: TextDirection.ltr,
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.arrow_downward_rounded, size: 15, color: Pal.green),
+                const SizedBox(width: 3),
+                Text(_bps(_rxBps), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Pal.t2)),
+                const SizedBox(width: 14),
+                Icon(Icons.arrow_upward_rounded, size: 15, color: Pal.orange),
+                const SizedBox(width: 3),
+                Text(_bps(_txBps), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Pal.t2)),
+              ]),
+            ),
+          ),
       ]),
     );
   }

@@ -135,7 +135,7 @@ const _fa = {
   'every_30': 'هر ۳۰ دقیقه',
   'every_60': 'هر ۱ ساعت',
   'every_180': 'هر ۳ ساعت',
-  'update_every_note': 'ساب همیشه در اولین باز شدن برنامه‌ی هر روز هم به‌روز می‌شود. به‌روزرسانی دوره‌ای فقط وقتی برنامه باز است انجام می‌شود.',
+  'update_every_note': 'ساب در هر بار باز شدن برنامه و هر بار که روی اتصال می‌زنید (حتی بعد از قطع و وصل) به‌روز می‌شود. به‌روزرسانی دوره‌ای فقط وقتی برنامه باز است انجام می‌شود.',
   'app_update': 'به‌روزرسانی برنامه',
   'check_update': 'بررسی نسخه‌ی جدید',
   'update_available': 'نسخه‌ی جدید آماده است',
@@ -211,6 +211,12 @@ const _fa = {
   'server_tip': 'نکته: معمولاً سرورهای شماره‌ی ۱ برای همراه اول و سرورهای شماره‌ی ۲ برای ایرانسل و وای‌فای بهتر جواب می‌دهند.',
   'core_old': 'هسته‌ی قدیمی: سرعت کمتر است. بیلد جدید بگیرید تا هسته‌ی ۲۶.۱۰.۲۱ یا جدیدتر قرار بگیرد.',
   'mac_update_note': 'فایل نصب باز شد. برنامه را روی «Applications» بکشید و جایگزین کنید.',
+  'tray_show': 'نمایش برنامه',
+  'tray_connect': 'اتصال',
+  'tray_disconnect': 'قطع اتصال',
+  'tray_exit': 'خروج کامل',
+  'opt_speed_widget': 'نمایش سرعت اینترنت روی صفحه (همیشه، با VPN یا بدون VPN)',
+  'opt_speed_bits': 'سرعت بر حسب بیت (Mbps) به‌جای بایت (MB/s)',
 };
 
 const _en = {
@@ -321,7 +327,7 @@ const _en = {
   'every_30': 'Every 30 minutes',
   'every_60': 'Every 1 hour',
   'every_180': 'Every 3 hours',
-  'update_every_note': 'The subscription is also always updated the first time the app opens each day. Periodic updates run only while the app is open.',
+  'update_every_note': 'The subscription is updated every time the app opens and every time you press connect (also after a disconnect). Periodic updates run only while the app is open.',
   'app_update': 'App update',
   'check_update': 'Check for updates',
   'update_available': 'A new version is available',
@@ -397,4 +403,10 @@ const _en = {
   'server_tip': 'Tip: servers numbered 1 usually work better on Hamrah-e-Aval, and servers numbered 2 on Irancell and Wi-Fi.',
   'core_old': 'Old core: slower speed. Rebuild so it uses core 26.10.21 or newer.',
   'mac_update_note': 'The installer opened. Drag the app onto Applications to replace the old one.',
+  'tray_show': 'Show',
+  'tray_connect': 'Connect',
+  'tray_disconnect': 'Disconnect',
+  'tray_exit': 'Quit',
+  'opt_speed_widget': 'Show a floating internet-speed meter (always, with or without VPN)',
+  'opt_speed_bits': 'Show speed in bits (Mbps) instead of bytes (MB/s)',
 };

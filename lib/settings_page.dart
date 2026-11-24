@@ -251,6 +251,20 @@ class _SettingsPageState extends State<SettingsPage> {
                           s.winAutostart = v;
                           WinCore.setAutostart(v);
                         }, icon: Icons.play_circle_outline_rounded),
+                        if (Platform.isWindows)
+                          _switch(tr('opt_speed_widget'), s.speedWidget, (v) {
+                            s.speedWidget = v;
+                            if (v) {
+                              WinCore.startWidget(bits: s.speedBits);
+                            } else {
+                              WinCore.stopWidget();
+                            }
+                          }, icon: Icons.speed_rounded),
+                        if (Platform.isWindows)
+                          _switch(tr('opt_speed_bits'), s.speedBits, (v) {
+                            s.speedBits = v;
+                            if (s.speedWidget) WinCore.startWidget(bits: v);
+                          }, icon: Icons.swap_vert_rounded),
                         ListTile(
                           leading: Icon(Icons.folder_open_rounded, color: Pal.cyan),
                           title: Text(tr('show_logs')),
