@@ -279,7 +279,6 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   Future<void> _poll() async {
-    if (isDesktop) _sampleNet();
     try {
       await _pollInner();
     } catch (_) {}
@@ -304,6 +303,12 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       connectedAt = null;
     }
     if (s == 'stopped' && status != 'stopped') _detectNet();
+    if (_smartUsed && s.startsWith('error')) {
+      _smartUsed = false;
+      store.smartKeep = false; // this device/core did not accept the smart configuration
+      store.save();
+      _toast(tr('smart_failed'));
+    }
     if (isDesktop && (s == 'running') != (status == 'running')) DesktopShell.setConnected(s == 'running');
     if (s == 'running' && status != 'running' && store.nodes.isNotEmpty && store.selected < store.nodes.length) {
       store.lastKey = store.nodes[store.selected].key; // remember the server we connected to
@@ -388,8 +393,10 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     lastShownError = null;
     final node = store.nodes[store.selected];
     String cfg;
+    final usePool = store.autoSelect && store.smartKeep && _smartPool.isNotEmpty;
+    _smartUsed = usePool;
     try {
-      cfg = buildConfig(node.ob, store);
+      cfg = buildConfig(node.ob, store, pool: usePool ? _smartPool : const []);
     } catch (e) {
       _toast('${tr('error')}: $e');
       return;
@@ -453,6 +460,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   /// best candidates and picks the lowest delay, penalising unstable ones.
   Future<void> _autoSelect() async {
     final nodes = store.nodes;
+    _smartPool = [];
     await tcpPingAll(nodes, samples: 2);
     if (cancel) return;
 
@@ -473,6 +481,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (!isDesktop) cand.addAll(tcpDead.where((i) => !cand.contains(i)).take(3));
 
     int best = cand.first;
+    final scored = <(double, int)>[];
     try {
       final real = await pingBatch(cand.map((i) => nodes[i].ob).toList(), store.testUrl);
       var bestScore = double.infinity;
@@ -482,12 +491,19 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
         if (real[k] == null) continue;
         final jitter = n.stat == null ? 0 : (n.stat!.max - n.stat!.min);
         final score = real[k]! + jitter * 2.0 + ((n.stat?.ok ?? 1) == 0 ? 0 : ((n.stat?.total ?? 0) - (n.stat?.ok ?? 0))) * 500;
+        scored.add((score, cand[k]));
         if (score < bestScore) {
           bestScore = score;
           best = cand[k];
         }
       }
     } catch (_) {}
+    // the other fast servers stay ready next to the best one (smart mode)
+    scored.sort((a, b) => a.$1.compareTo(b.$1));
+    _smartPool = [
+      for (final e in scored)
+        if (e.$2 != best) nodes[e.$2].ob
+    ].take(math.max(1, store.keepTop - 1)).toList();
     store.selected = best;
     await store.save();
     if (mounted) setState(() {});
@@ -607,6 +623,8 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   }
 
   bool _liveSort = false;
+  List<Map<String, dynamic>> _smartPool = [];
+  bool _smartUsed = false;
 
   Future<void> _ping() async {
     if (store.nodes.isEmpty) return;
@@ -826,81 +844,26 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } catch (_) {}
   }
 
-  // speed of the whole machine (desktop), independent of the VPN
-  int? _lastRx, _lastTx;
-  DateTime? _lastAt;
-  double _rxBps = 0, _txBps = 0;
-  bool _sampling = false;
-  int _tipTick = 0;
-
-  String _bps(double v) {
-    if (store.speedBits) {
-      final b = v * 8;
-      if (b >= 1e9) return '${(b / 1e9).toStringAsFixed(2)} Gbps';
-      if (b >= 1e6) return '${(b / 1e6).toStringAsFixed(2)} Mbps';
-      return '${(b / 1e3).toStringAsFixed(0)} Kbps';
-    }
-    if (v >= 1073741824) return '${(v / 1073741824).toStringAsFixed(2)} GB/s';
-    if (v >= 1048576) return '${(v / 1048576).toStringAsFixed(2)} MB/s';
-    return '${(v / 1024).toStringAsFixed(0)} KB/s';
-  }
-
-  Future<void> _sampleNet() async {
-    if (_sampling) return;
-    _sampling = true;
-    try {
-      final t = await WinCore.netTotals();
-      if (t == null) return;
-      final now = DateTime.now();
-      if (_lastRx != null && _lastTx != null && _lastAt != null) {
-        final dt = now.difference(_lastAt!).inMilliseconds / 1000;
-        if (dt > 0) {
-          var d = t.$1 - _lastRx!;
-          var u = t.$2 - _lastTx!;
-          if (d < 0) d += 4294967296; // 32-bit counter wrapped
-          if (u < 0) u += 4294967296;
-          _rxBps = d / dt;
-          _txBps = u / dt;
-        }
-      }
-      _lastRx = t.$1;
-      _lastTx = t.$2;
-      _lastAt = now;
-      if (mounted) setState(() {});
-      if (++_tipTick % 2 == 0) DesktopShell.setTip('DastRas NG   ↓ ${_bps(_rxBps)}   ↑ ${_bps(_txBps)}');
-    } finally {
-      _sampling = false;
-    }
+  Widget _smartChip() {
+    if (!(running && _smartUsed)) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.bolt_rounded, size: 16, color: Pal.orange),
+        const SizedBox(width: 6),
+        Text('${tr('smart_on')} · ${_smartPool.length + 1}', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
+      ]),
+    );
   }
 
   Widget _netChip() {
-    final hasLabel = _netLabel.isNotEmpty;
-    if (!hasLabel && !isDesktop) return const SizedBox.shrink();
+    if (_netLabel.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(top: 8),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        if (hasLabel)
-          Row(mainAxisSize: MainAxisSize.min, children: [
-            Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
-            const SizedBox(width: 6),
-            Text('${tr('network_now')}: $_netLabel', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
-          ]),
-        if (isDesktop)
-          Padding(
-            padding: const EdgeInsets.only(top: 4),
-            child: Directionality(
-              textDirection: TextDirection.ltr,
-              child: Row(mainAxisSize: MainAxisSize.min, children: [
-                Icon(Icons.arrow_downward_rounded, size: 15, color: Pal.green),
-                const SizedBox(width: 3),
-                Text(_bps(_rxBps), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Pal.t2)),
-                const SizedBox(width: 14),
-                Icon(Icons.arrow_upward_rounded, size: 15, color: Pal.orange),
-                const SizedBox(width: 3),
-                Text(_bps(_txBps), style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: Pal.t2)),
-              ]),
-            ),
-          ),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        Icon(Icons.network_check_rounded, size: 16, color: Pal.cyan),
+        const SizedBox(width: 6),
+        Text('${tr('network_now')}: $_netLabel', style: TextStyle(fontSize: 12.5, color: Pal.t3)),
       ]),
     );
   }
@@ -1369,12 +1332,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
       const SizedBox(height: 12),
       _modeToggle(),
       _netChip(),
+      _smartChip(),
       const SizedBox(height: 12),
       if (running) _speedCard(),
       if (running) const SizedBox(height: 10),
       _serverCard(),
       if (store.info != null) const SizedBox(height: 10),
       if (store.info != null) _usageCard(),
+      if (store.info == null && store.subs.isNotEmpty) ...[
+        const SizedBox(height: 10),
+        _usageMissing(),
+      ],
       if (_xrayVer.isNotEmpty)
         Padding(
           padding: const EdgeInsets.only(top: 12),
@@ -1482,6 +1450,26 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     );
   }
 
+  Widget _usageMissing() {
+    return SizedBox(
+      width: 300,
+      child: Glass(
+        radius: 22,
+        padding: const EdgeInsets.fromLTRB(14, 8, 6, 8),
+        child: Row(children: [
+          Icon(Icons.data_usage_rounded, size: 18, color: Pal.t3),
+          const SizedBox(width: 8),
+          Expanded(child: Text(tr('usage_unknown'), style: TextStyle(fontSize: 12.5, height: 1.4, color: Pal.t3))),
+          IconButton(
+            visualDensity: VisualDensity.compact,
+            icon: Icon(Icons.refresh_rounded, color: Pal.cyan),
+            onPressed: () => _refreshSubs(),
+          ),
+        ]),
+      ),
+    );
+  }
+
   Widget _usageCard() {
     final i = store.info!;
     final total = i.total;
@@ -1539,7 +1527,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           if (store.nodes[i].src == 'sub' && (store.nodes[i].subUrl == url || (store.nodes[i].subUrl == null && url == firstSub))) i
       ];
       final t = store.titleFor(url);
-      sections.add((t.isEmpty ? '${tr('subscription')} ${sections.length + 1}' : t, url, idx));
+      final base = t.isEmpty ? tr('subscription') : t;
+      final same = store.subs.where((u) => (store.titleFor(u).isEmpty ? tr('subscription') : store.titleFor(u)) == base).length > 1;
+      sections.add((same ? '$base · ${sections.length + 1}' : base, url, idx));
     }
     final custom = <int>[
       for (var i = 0; i < store.nodes.length; i++)
@@ -1548,8 +1538,15 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     if (custom.isNotEmpty) sections.add((tr('custom_configs'), null, custom));
     final items = <Widget>[];
     for (final sec in sections) {
-      items.add(_sectionHeader(sec.$1, sec.$2, sec.$3.length));
-      items.add(_animatedNodes(sec.$3));
+      final key = sec.$2 ?? '__custom__';
+      final folded = store.collapsed.contains(key);
+      items.add(_sectionHeader(sec.$1, sec.$2, sec.$3.length, collapsed: folded, onTap: () async {
+        setState(() {
+          if (!store.collapsed.add(key)) store.collapsed.remove(key);
+        });
+        await store.save();
+      }));
+      if (!folded) items.add(_animatedNodes(sec.$3));
     }
     return RefreshIndicator(
       onRefresh: () => _refreshSubs(),
@@ -1574,7 +1571,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
   Widget _animatedNodes(List<int> idx) {
     final order = [...idx];
     if (_liveSort) order.sort(_byDelay);
-    const rowH = 74.0;
+    const rowH = 54.0;
     return SizedBox(
       height: order.length * rowH,
       child: Stack(children: [
@@ -1595,14 +1592,17 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
 
   bool _isOurSub(String url) => (Uri.tryParse(url)?.host.toLowerCase() ?? '').startsWith('dastras');
 
-  Widget _sectionHeader(String title, String? url, int count) {
+  Widget _sectionHeader(String title, String? url, int count, {bool collapsed = false, VoidCallback? onTap}) {
     final info = url == null ? null : store.infoFor(url);
     final total = info?.total ?? 0;
     final exp = (info != null && info.expire > 0) ? fmtDate(DateTime.fromMillisecondsSinceEpoch(info.expire * 1000)) : null;
     return Padding(
       padding: const EdgeInsets.fromLTRB(18, 16, 18, 4),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Row(children: [
+        InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: Row(children: [
           Icon(url == null ? Icons.tune_rounded : Icons.cloud_rounded, size: 18, color: Pal.cyan),
           const SizedBox(width: 8),
           Expanded(
@@ -1616,7 +1616,9 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
             decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(10), border: Border.all(color: Pal.cardBorder)),
             child: Text('$count', style: TextStyle(fontSize: 12.5, color: Pal.t2)),
           ),
-        ]),
+          const SizedBox(width: 6),
+          Icon(collapsed ? Icons.expand_more_rounded : Icons.expand_less_rounded, color: Pal.t3),
+        ])),
         if (url != null && _isOurSub(url) && !store.tipHidden)
           Container(
             margin: const EdgeInsets.only(top: 8),
@@ -1879,31 +1881,31 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     final n = store.nodes[i];
     final sel = i == store.selected;
     final d = n.delay;
-    final pingText = d != null ? '${d}ms' : (n.tested ? 'n/a' : '');
+    final pingText = n.isInfo ? '' : (d != null ? '${d}ms' : (n.tested ? 'n/a' : ''));
     final pc = pingColor(d);
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 3, 12, 3),
+      margin: const EdgeInsets.fromLTRB(12, 2, 12, 2),
       decoration: BoxDecoration(
         color: sel ? Pal.accent.withValues(alpha: 0.14) : Pal.card,
-        borderRadius: BorderRadius.circular(18),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: sel ? Pal.accent.withValues(alpha: 0.8) : Pal.cardBorder, width: sel ? 1.4 : 1),
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          borderRadius: BorderRadius.circular(18),
+          borderRadius: BorderRadius.circular(16),
           onTap: () => _select(i),
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(10, 8, 2, 8),
+            padding: const EdgeInsets.fromLTRB(10, 5, 0, 5),
             child: Row(children: [
               Container(
-                width: 42,
-                height: 42,
+                width: 34,
+                height: 34,
                 alignment: Alignment.center,
-                decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(12)),
-                child: FlagIcon(n.countryCode, size: 30),
+                decoration: BoxDecoration(color: Pal.card, borderRadius: BorderRadius.circular(10)),
+                child: FlagIcon(n.countryCode, size: 24),
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 10),
               Expanded(
                 child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                   Row(children: [
@@ -1918,31 +1920,31 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
                       child: Text(n.name,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: Pal.t1)),
+                          style: TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: Pal.t1)),
                     ),
                   ]),
-                  const SizedBox(height: 2),
-                  Text(n.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: Pal.t4)),
+                  Text(n.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: Pal.t4)),
                 ]),
               ),
-              if (pingText.isEmpty && _liveSort && !n.tested)
+              if (pingText.isEmpty && _liveSort && !n.tested && !n.isInfo)
                 const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 8),
                   child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2)),
                 ),
               if (pingText.isNotEmpty)
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                  decoration: BoxDecoration(color: pc.withValues(alpha: 0.14), borderRadius: BorderRadius.circular(10)),
+                SizedBox(
+                  width: 58,
                   child: Directionality(
                     textDirection: TextDirection.ltr,
-                    child: Text(pingText, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w700, color: pc)),
+                    child: Text(pingText, textAlign: TextAlign.center, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: pc)),
                   ),
                 ),
               IconButton(
                 visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minWidth: 34, minHeight: 34),
                 onPressed: () => _nodeDetails(i),
-                icon: Icon(Icons.more_vert_rounded, color: Pal.t4, size: 20),
+                icon: Icon(Icons.more_vert_rounded, color: Pal.t4, size: 18),
               ),
             ]),
           ),

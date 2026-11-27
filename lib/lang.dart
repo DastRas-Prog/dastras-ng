@@ -217,6 +217,10 @@ const _fa = {
   'tray_exit': 'خروج کامل',
   'opt_speed_widget': 'نمایش سرعت اینترنت روی صفحه (همیشه، با VPN یا بدون VPN)',
   'opt_speed_bits': 'سرعت بر حسب بیت (Mbps) به‌جای بایت (MB/s)',
+  'opt_smart': 'اتصال هوشمند در حالت اتوماتیک (۵ سرور برتر آماده می‌ماند و در صورت کندی یا قطع، بدون وقفه عوض می‌شود)',
+  'smart_on': 'هوشمند (سرورهای آماده)',
+  'smart_failed': 'حالت هوشمند روی این دستگاه کار نکرد و خاموش شد؛ دوباره وصل شوید.',
+  'usage_unknown': 'مصرف اشتراک مشخص نیست (ساب هنوز به‌روز نشده یا پنل اطلاعات حجم نفرستاده). برای تلاش دوباره، دکمه‌ی به‌روزرسانی را بزنید.',
 };
 
 const _en = {
@@ -409,4 +413,8 @@ const _en = {
   'tray_exit': 'Quit',
   'opt_speed_widget': 'Show a floating internet-speed meter (always, with or without VPN)',
   'opt_speed_bits': 'Show speed in bits (Mbps) instead of bytes (MB/s)',
+  'opt_smart': 'Smart connection in automatic mode (the 5 best servers stay ready and are swapped without a break when one slows down or dies)',
+  'smart_on': 'Smart (servers ready)',
+  'smart_failed': 'Smart mode did not work on this device and was turned off; connect again.',
+  'usage_unknown': 'Subscription usage is unknown (not updated yet, or the panel did not send it). Tap refresh to try again.',
 };

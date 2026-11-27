@@ -317,8 +317,8 @@ class WinCore {
         for (final e in (j['stat'] as List? ?? const [])) {
           final n = '${(e as Map)['name']}';
           final v = int.tryParse('${e['value']}') ?? 0;
-          if (n == 'outbound>>>proxy>>>traffic>>>downlink') d = v;
-          if (n == 'outbound>>>proxy>>>traffic>>>uplink') u = v;
+          if (n.startsWith('outbound>>>proxy') && n.endsWith('>>>traffic>>>downlink')) d += v;
+          if (n.startsWith('outbound>>>proxy') && n.endsWith('>>>traffic>>>uplink')) u += v;
         }
         if (_firstStat) {
           _lastDown = d;
@@ -608,17 +608,21 @@ class WinCore {
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
+$C = [System.Drawing.Color]
 
-function Fmt([double]$bps) {
-  if ($Unit -eq 'bits') {
-    $b = $bps * 8
-    if ($b -ge 1e9) { return ('{0:N2} Gbps' -f ($b / 1e9)) }
-    if ($b -ge 1e6) { return ('{0:N2} Mbps' -f ($b / 1e6)) }
-    return ('{0:N0} Kbps' -f ($b / 1e3))
-  }
-  if ($bps -ge 1073741824) { return ('{0:N2} GB/s' -f ($bps / 1073741824)) }
-  if ($bps -ge 1048576) { return ('{0:N2} MB/s' -f ($bps / 1048576)) }
-  return ('{0:N0} KB/s' -f ($bps / 1024))
+# ---------- helpers ----------
+function Short([double]$bps) {
+  if ($Unit -eq 'bits') { $v = $bps * 8; $s = 'b'; $k = 1000.0 } else { $v = $bps; $s = ''; $k = 1024.0 }
+  if ($v -ge ($k * $k * $k)) { return ('{0:N2}G{1}' -f ($v / ($k * $k * $k)), $s) }
+  if ($v -ge ($k * $k)) { return ('{0:N2}M{1}' -f ($v / ($k * $k)), $s) }
+  if ($v -ge $k) { return ('{0:N1}K{1}' -f ($v / $k), $s) }
+  return ('{0:N0}{1}' -f $v, $s)
+}
+
+function Sizes([double]$b) {
+  if ($b -ge 1073741824) { return ('{0:N2} GB' -f ($b / 1073741824)) }
+  if ($b -ge 1048576) { return ('{0:N1} MB' -f ($b / 1048576)) }
+  return ('{0:N0} KB' -f ($b / 1024))
 }
 
 function Totals {
@@ -635,37 +639,136 @@ function Totals {
   return @($rx, $tx)
 }
 
+function RoundRect($r, [int]$d) {
+  $p = New-Object System.Drawing.Drawing2D.GraphicsPath
+  $p.AddArc($r.X, $r.Y, $d, $d, 180, 90)
+  $p.AddArc($r.Right - $d, $r.Y, $d, $d, 270, 90)
+  $p.AddArc($r.Right - $d, $r.Bottom - $d, $d, $d, 0, 90)
+  $p.AddArc($r.X, $r.Bottom - $d, $d, $d, 90, 90)
+  $p.CloseFigure()
+  return $p
+}
+
+# ---------- state ----------
+$script:dn = 0.0
+$script:upv = 0.0
+$script:pkD = 1.0
+$script:pkU = 1.0
+$script:ping = '--'
+$script:conns = 0
+$script:pHosts = @('1.1.1.1', '8.8.8.8', '9.9.9.9')
+$script:pIdx = 0
+$script:pc = $null
+$script:pAr = $null
+$script:pSw = $null
+
+function PingStart {
+  try {
+    $script:pc = New-Object System.Net.Sockets.TcpClient
+    $script:pSw = [System.Diagnostics.Stopwatch]::StartNew()
+    $script:pAr = $script:pc.BeginConnect($script:pHosts[$script:pIdx], 443, $null, $null)
+  } catch { $script:pc = $null; $script:pAr = $null }
+}
+
+function PingPoll {
+  if ($null -eq $script:pAr) { return }
+  if ($script:pAr.IsCompleted) {
+    $ms = [int]$script:pSw.ElapsedMilliseconds
+    $ok = $false
+    try { $script:pc.EndConnect($script:pAr); $ok = $true } catch {}
+    try { $script:pc.Close() } catch {}
+    $script:pAr = $null
+    $script:pc = $null
+    if ($ok) { $script:ping = ('{0}ms' -f $ms) } else { $script:ping = '--'; $script:pIdx = ($script:pIdx + 1) % $script:pHosts.Count }
+  } elseif ($script:pSw.ElapsedMilliseconds -gt 1500) {
+    try { $script:pc.Close() } catch {}
+    $script:pAr = $null
+    $script:pc = $null
+    $script:ping = '--'
+    $script:pIdx = ($script:pIdx + 1) % $script:pHosts.Count
+  }
+}
+
+# ---------- window: small glass panel ----------
+$W = 184
+$H = 80
 $f = New-Object System.Windows.Forms.Form
 $f.FormBorderStyle = 'None'
 $f.TopMost = $true
 $f.ShowInTaskbar = $false
 $f.StartPosition = 'Manual'
-$f.Size = New-Object System.Drawing.Size(170, 46)
-$f.BackColor = [System.Drawing.Color]::FromArgb(22, 28, 42)
-$f.Opacity = 0.9
+$f.ClientSize = New-Object System.Drawing.Size($W, $H)
+$f.BackColor = $C::FromArgb(14, 20, 46)
+$f.Opacity = 0.93
+$f.Region = New-Object System.Drawing.Region((RoundRect (New-Object System.Drawing.Rectangle(0, 0, $W, $H)) 12))
+try { $f.GetType().GetProperty('DoubleBuffered', [System.Reflection.BindingFlags]'Instance,NonPublic').SetValue($f, $true, $null) } catch {}
 
-$font = New-Object System.Drawing.Font('Segoe UI', 9.5, [System.Drawing.FontStyle]::Bold)
-$down = New-Object System.Windows.Forms.Label
-$down.AutoSize = $false
-$down.Location = New-Object System.Drawing.Point(8, 4)
-$down.Size = New-Object System.Drawing.Size(154, 19)
-$down.Font = $font
-$down.ForeColor = [System.Drawing.Color]::FromArgb(80, 220, 170)
-$down.Text = ([string][char]0x2193) + ' 0 KB/s'
-$up = New-Object System.Windows.Forms.Label
-$up.AutoSize = $false
-$up.Location = New-Object System.Drawing.Point(8, 23)
-$up.Size = New-Object System.Drawing.Size(154, 19)
-$up.Font = $font
-$up.ForeColor = [System.Drawing.Color]::FromArgb(255, 170, 70)
-$up.Text = ([string][char]0x2191) + ' 0 KB/s'
-$f.Controls.Add($down)
-$f.Controls.Add($up)
+$fontB = New-Object System.Drawing.Font('Segoe UI Semibold', 9.5)
+$white = New-Object System.Drawing.SolidBrush($C::FromArgb(240, 245, 255))
+$sfRight = New-Object System.Drawing.StringFormat
+$sfRight.Alignment = [System.Drawing.StringAlignment]::Far
 
-# remembered position, otherwise the bottom-right corner above the taskbar
+$f.Add_Paint({
+  $g = $_.Graphics
+  $g.SmoothingMode = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+  $g.TextRenderingHint = [System.Drawing.Text.TextRenderingHint]::ClearTypeGridFit
+  $full = New-Object System.Drawing.Rectangle(0, 0, ($W - 1), ($H - 1))
+  $path = RoundRect $full 12
+  # deep blue glass body
+  $bg = New-Object System.Drawing.Drawing2D.LinearGradientBrush($full, $C::FromArgb(255, 36, 56, 108), $C::FromArgb(255, 9, 14, 36), [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+  $g.FillPath($bg, $path)
+  # light reflection on the upper part
+  $top = New-Object System.Drawing.Rectangle(0, 0, $W, 34)
+  $hl = New-Object System.Drawing.Drawing2D.LinearGradientBrush($top, $C::FromArgb(70, 255, 255, 255), $C::FromArgb(6, 255, 255, 255), [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+  $g.SetClip($path)
+  $g.FillRectangle($hl, $top)
+  $g.ResetClip()
+  $pen = New-Object System.Drawing.Pen($C::FromArgb(210, 120, 150, 220), 1)
+  $g.DrawPath($pen, $path)
+
+  # row 1: arrows, ping, connections
+  $o = New-Object System.Drawing.SolidBrush($C::FromArgb(255, 255, 150, 50))
+  $gr = New-Object System.Drawing.SolidBrush($C::FromArgb(255, 70, 220, 110))
+  $g.FillPolygon($o, @((New-Object System.Drawing.Point(11, 6)), (New-Object System.Drawing.Point(15, 12)), (New-Object System.Drawing.Point(12, 12)), (New-Object System.Drawing.Point(12, 20)), (New-Object System.Drawing.Point(10, 20)), (New-Object System.Drawing.Point(10, 12)), (New-Object System.Drawing.Point(7, 12))))
+  $g.FillPolygon($gr, @((New-Object System.Drawing.Point(20, 21)), (New-Object System.Drawing.Point(24, 15)), (New-Object System.Drawing.Point(21, 15)), (New-Object System.Drawing.Point(21, 7)), (New-Object System.Drawing.Point(19, 7)), (New-Object System.Drawing.Point(19, 15)), (New-Object System.Drawing.Point(16, 15))))
+  $g.DrawString($script:ping, $fontB, $white, 30, 4)
+  $blue = New-Object System.Drawing.SolidBrush($C::FromArgb(255, 80, 140, 255))
+  $g.FillRectangle($blue, 132, 10, 7, 7)
+  $g.DrawString([string]$script:conns, $fontB, $white, (New-Object System.Drawing.RectangleF(138, 4, 40, 18)), $sfRight)
+
+  # rows 2 and 3: bars (bright = now, dark = recent peak) and the numbers
+  $scaleD = [Math]::Max($script:pkD, 262144.0)
+  $scaleU = [Math]::Max($script:pkU, 131072.0)
+  $rows = @(
+    @(33, $script:dn, $script:pkD, $scaleD, $C::FromArgb(255, 255, 160, 70), $C::FromArgb(255, 255, 110, 30), $C::FromArgb(255, 120, 55, 45)),
+    @(55, $script:upv, $script:pkU, $scaleU, $C::FromArgb(255, 90, 235, 130), $C::FromArgb(255, 40, 170, 85), $C::FromArgb(255, 30, 95, 62))
+  )
+  foreach ($r in $rows) {
+    $y = [int]$r[0]
+    $bx = 24
+    $bw = 106
+    $track = New-Object System.Drawing.SolidBrush($C::FromArgb(70, 255, 255, 255))
+    $g.FillPath($track, (RoundRect (New-Object System.Drawing.Rectangle($bx, $y, $bw, 12)) 5))
+    $pw = [int]([Math]::Min(1.0, $r[2] / $r[3]) * $bw)
+    $cw = [int]([Math]::Min(1.0, $r[1] / $r[3]) * $bw)
+    if ($pw -gt 6) {
+      $g.FillPath((New-Object System.Drawing.SolidBrush($r[6])), (RoundRect (New-Object System.Drawing.Rectangle($bx, $y, $pw, 12)) 5))
+    }
+    if ($cw -gt 6) {
+      $rc = New-Object System.Drawing.Rectangle($bx, $y, $cw, 12)
+      $gb = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rc, $r[4], $r[5], [System.Drawing.Drawing2D.LinearGradientMode]::Vertical)
+      $g.FillPath($gb, (RoundRect $rc 5))
+    }
+    $sq = New-Object System.Drawing.SolidBrush($r[5])
+    $g.FillRectangle($sq, 9, ($y + 2), 8, 8)
+    $g.DrawString((Short $r[1]), $fontB, $white, (New-Object System.Drawing.RectangleF(130, ($y - 4), 50, 18)), $sfRight)
+  }
+})
+
+# ---------- position: remembered, otherwise bottom-right just above the clock ----------
 $wa = [System.Windows.Forms.Screen]::PrimaryScreen.WorkingArea
-$x = $wa.Right - $f.Width - 12
-$y = $wa.Bottom - $f.Height - 12
+$x = $wa.Right - $W - 8
+$y = $wa.Bottom - $H - 8
 if ($PosFile -ne '' -and (Test-Path $PosFile)) {
   try {
     $p = (Get-Content $PosFile -Raw).Trim().Split(',')
@@ -677,61 +780,69 @@ if ($PosFile -ne '' -and (Test-Path $PosFile)) {
 }
 $f.Location = New-Object System.Drawing.Point($x, $y)
 
-# drag with the left mouse button
+# ---------- drag with the left mouse button ----------
 $script:drag = $false
-$onDown = {
+$f.Add_MouseDown({
   if ($_.Button -eq 'Left') {
     $script:drag = $true
     $script:c0 = [System.Windows.Forms.Cursor]::Position
     $script:l0 = $f.Location
   }
-}
-$onMove = {
+})
+$f.Add_MouseMove({
   if ($script:drag) {
     $c = [System.Windows.Forms.Cursor]::Position
     $f.Location = New-Object System.Drawing.Point(($script:l0.X + $c.X - $script:c0.X), ($script:l0.Y + $c.Y - $script:c0.Y))
   }
-}
-$onUp = {
+})
+$f.Add_MouseUp({
   if ($script:drag) {
     $script:drag = $false
     if ($PosFile -ne '') { try { Set-Content -Path $PosFile -Value ('{0},{1}' -f $f.Location.X, $f.Location.Y) } catch {} }
   }
-}
-foreach ($c in @($f, $down, $up)) {
-  $c.Add_MouseDown($onDown)
-  $c.Add_MouseMove($onMove)
-  $c.Add_MouseUp($onUp)
-}
+})
 
 $menu = New-Object System.Windows.Forms.ContextMenuStrip
-$item = $menu.Items.Add('Close / ' + [string][char]0x0628 + [char]0x0633 + [char]0x062A + [char]0x0646)
+$item = $menu.Items.Add('Close')
 $item.Add_Click({ $f.Close() })
 $f.ContextMenuStrip = $menu
-$down.ContextMenuStrip = $menu
-$up.ContextMenuStrip = $menu
+$tt = New-Object System.Windows.Forms.ToolTip
 
-$script:last = Totals
+# ---------- live data ----------
+$tot0 = Totals
+$script:last = $tot0
 $script:sw = [System.Diagnostics.Stopwatch]::StartNew()
 $script:tick = 0
 $timer = New-Object System.Windows.Forms.Timer
-$timer.Interval = 1000
+$timer.Interval = 500
 $timer.Add_Tick({
   $script:tick++
-  if ($ParentPid -gt 0 -and ($script:tick % 5) -eq 0) {
+  if ($ParentPid -gt 0 -and ($script:tick % 10) -eq 0) {
     if (-not (Get-Process -Id $ParentPid -ErrorAction SilentlyContinue)) { $f.Close(); return }
   }
   $now = Totals
   $dt = $script:sw.Elapsed.TotalSeconds
   $script:sw.Restart()
-  if ($dt -le 0) { return }
-  $dr = ($now[0] - $script:last[0]) / $dt
-  $du = ($now[1] - $script:last[1]) / $dt
-  if ($dr -lt 0) { $dr = 0 }
-  if ($du -lt 0) { $du = 0 }
+  if ($dt -gt 0) {
+    $dr = ($now[0] - $script:last[0]) / $dt
+    $du = ($now[1] - $script:last[1]) / $dt
+    if ($dr -lt 0) { $dr = 0 }
+    if ($du -lt 0) { $du = 0 }
+    $script:dn = 0.5 * $script:dn + 0.5 * $dr
+    $script:upv = 0.5 * $script:upv + 0.5 * $du
+    $script:pkD = [Math]::Max($script:pkD * 0.992, $script:dn)
+    $script:pkU = [Math]::Max($script:pkU * 0.992, $script:upv)
+  }
   $script:last = $now
-  $down.Text = ([string][char]0x2193) + ' ' + (Fmt $dr)
-  $up.Text = ([string][char]0x2191) + ' ' + (Fmt $du)
+  PingPoll
+  if (($script:tick % 6) -eq 1 -and $null -eq $script:pAr) { PingStart }
+  if (($script:tick % 6) -eq 3) {
+    try { $script:conns = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProperties().GetActiveTcpConnections().Count } catch {}
+  }
+  if (($script:tick % 4) -eq 0) {
+    $tt.SetToolTip($f, ('Down {0}   Up {1}   (since start)' -f (Sizes ($now[0] - $tot0[0])), (Sizes ($now[1] - $tot0[1]))))
+  }
+  $f.Invalidate()
 })
 $timer.Start()
 [System.Windows.Forms.Application]::Run($f)

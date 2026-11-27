@@ -30,7 +30,7 @@ String _flow(Map<String, dynamic> ob) {
 
 /// Builds the full Xray config around the selected outbound.
 /// The TUN fd and asset dir are injected natively (root "env").
-String buildConfig(Map<String, dynamic> ob, Store s) {
+String buildConfig(Map<String, dynamic> ob, Store s, {List<Map<String, dynamic>> pool = const []}) {
   final proxy = Map<String, dynamic>.from(ob)..['tag'] = 'proxy';
   final extra = proxy.remove('_extra');
   final outbounds = <Map<String, dynamic>>[];
@@ -130,6 +130,34 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
     if (winInclude) {'type': 'field', 'network': 'tcp,udp', 'outboundTag': 'direct'},
   ];
 
+  // Smart mode: the best servers run side by side; Xray probes them and always uses the fastest one,
+  // so a slow or dead server is replaced without any reconnect.
+  final smartPool = pool.where((p) => p['_extra'] == null).toList();
+  final useSmart = smartPool.isNotEmpty && extra == null;
+  if (useSmart) {
+    var k = 0;
+    for (final p in smartPool) {
+      final sub = jsonDecode(buildConfig(p, s)) as Map;
+      for (final o in (sub['outbounds'] as List)) {
+        final m = Map<String, dynamic>.from(o as Map);
+        if (m['tag'] == 'proxy') {
+          k++;
+          m['tag'] = 'proxy-$k';
+          outbounds.add(m);
+        } else if (!outbounds.any((e) => e['tag'] == m['tag'])) {
+          outbounds.add(m);
+        }
+      }
+    }
+    for (final r in rules) {
+      if (r['outboundTag'] == 'proxy') {
+        r.remove('outboundTag');
+        r['balancerTag'] = 'smart';
+      }
+    }
+    if (!winInclude) rules.add({'type': 'field', 'network': 'tcp,udp', 'balancerTag': 'smart'});
+  }
+
   final cfg = {
     'log': {'loglevel': 'warning'},
     'dns': {'servers': dnsList(s), 'queryStrategy': s.ipv6 ? 'UseIP' : 'UseIPv4'},
@@ -191,5 +219,21 @@ String buildConfig(Map<String, dynamic> ob, Store s) {
     // AsIs avoids extra DNS lookups when no geoip rules are in use.
     'routing': {'domainStrategy': s.bypassIran ? 'IPIfNonMatch' : 'AsIs', 'rules': rules},
   };
+  if (useSmart) {
+    (cfg['routing'] as Map)['balancers'] = [
+      {
+        'tag': 'smart',
+        'selector': ['proxy'],
+        'strategy': {'type': 'leastPing'},
+        'fallbackTag': 'proxy',
+      }
+    ];
+    cfg['observatory'] = {
+      'subjectSelector': ['proxy'],
+      'probeUrl': s.testUrl,
+      'probeInterval': '30s',
+      'enableConcurrency': true,
+    };
+  }
   return jsonEncode(cfg);
 }

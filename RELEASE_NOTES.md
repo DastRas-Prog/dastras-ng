@@ -15,7 +15,13 @@
 - آیکن سینی سیستم (کنار ساعت ویندوز/مک) با منوی نمایش، اتصال/قطع و خروج؛ بستن پنجره، برنامه را در سینی نگه می‌دارد
 - سرورهایی که پورت TCP آن‌ها جواب نمی‌دهد (مثل بعضی XHTTP/QUIC) دیگر حذف نمی‌شوند و تست واقعی می‌شوند
 
-- نوار سرعت اینترنت شناور روی صفحه (ویندوز)، بدون وابستگی به VPN؛ سرعت لحظه‌ای دانلود و آپلود در صفحه‌ی اصلی و کنار آیکن سینی (ویندوز و مک)
+- ویجت شیشه‌ای سرعت (شبیه cFosSpeed) پایین سمت راست صفحه در ویندوز: سرعت دانلود/آپلود با نوار، پینگ و تعداد اتصال‌ها، مستقل از VPN
+
+- اتصال هوشمند (الهام‌گرفته از Hiddify): در حالت اتوماتیک ۵ سرور برتر کنار هم آماده می‌مانند و اگر یکی کند یا قطع شود، بدون قطع اتصال عوض می‌شود
+- ساب‌ها را می‌شود بست/باز کرد (لیست کشویی)؛ نام ساب‌های هم‌نام جدا می‌شود
+- اصلاح نمایش مصرف اشتراک در برخی گوشی‌ها؛ ردیف‌های اطلاعات حساب دیگر «n/a» نشان نمی‌دهند
+
+- کارت سرورها فشرده‌تر شد (فونت و فاصله‌ها کوچک‌تر) تا سرورهای بیشتری در صفحه جا شود؛ پینگ بدون کادر نمایش داده می‌شود
 
 **English**
 - Always the newest Xray core (shown in Settings and on the home screen)
@@ -30,5 +36,9 @@
 - Short messages (like "subscription updated") appear at the top, fade and disappear quickly
 - System-tray icon (next to the clock on Windows/macOS) with Show, Connect/Disconnect and Quit; closing the window keeps the app in the tray
 - Servers whose TCP port is silent (some XHTTP/QUIC ones) are no longer dropped; they get a real test instead
-- Floating internet-speed meter (Windows) that works with or without the VPN; live download/upload speed on the home screen and in the tray tooltip (Windows and macOS)
+- Glass-style speed widget (like cFosSpeed) at the bottom-right of the screen on Windows: download/upload bars, ping and connection count, independent of the VPN
+- Smart connection (inspired by Hiddify): in automatic mode the 5 best servers stay ready side by side and are swapped without a break when one slows down or dies
+- Subscription sections can be folded; same-named subscriptions are told apart
+- Fixed the usage card missing on some phones; account-info rows no longer show "n/a"
+- Server cards are more compact so more servers fit on the screen; the ping is shown without a pill
 

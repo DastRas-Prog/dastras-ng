@@ -153,6 +153,7 @@ class _SettingsPageState extends State<SettingsPage> {
                       _switch(tr('opt_connect_open'), s.connectOnOpen, (v) => s.connectOnOpen = v, icon: Icons.bolt_rounded),
                       _switch(tr('opt_clipboard'), s.clipboardWatch, (v) => s.clipboardWatch = v, icon: Icons.content_paste_rounded),
                       _switch(tr('opt_show_net'), s.showNet, (v) => s.showNet = v, icon: Icons.network_check_rounded),
+                      _switch(tr('opt_smart'), s.smartKeep, (v) => s.smartKeep = v, icon: Icons.bolt_rounded),
                       _switch(tr('opt_announce'), s.announceOn, (v) => s.announceOn = v,
                           sub: tr('opt_announce_sub'), icon: Icons.notifications_active_rounded),
                     ]),

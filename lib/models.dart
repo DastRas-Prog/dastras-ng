@@ -151,6 +151,9 @@ class Store {
   /// Per subscription: {t: title, u: used, tot: total, e: expire}
   Map<String, Map<String, dynamic>> subMeta = {};
   bool showNet = true;
+  bool smartKeep = true; // automatic mode keeps the best servers ready
+  int keepTop = 5;
+  Set<String> collapsed = {}; // folded subscription sections
   bool speedWidget = true; // Windows: floating speed meter
   bool speedBits = false; // show Mbps instead of MB/s
   bool tipHidden = false;
@@ -307,6 +310,9 @@ class Store {
     announceOn = _p.getBool('announceOn') ?? true;
     showSystemApps = _p.getBool('showSystemApps') ?? !isDesktop;
     showNet = _p.getBool('showNet') ?? true;
+    smartKeep = _p.getBool('smartKeep') ?? true;
+    keepTop = _p.getInt('keepTop') ?? 5;
+    collapsed = (_p.getStringList('collapsed') ?? const <String>[]).toSet();
     speedWidget = _p.getBool('speedWidget') ?? true;
     speedBits = _p.getBool('speedBits') ?? false;
     tipHidden = _p.getBool('tipHidden') ?? false;
@@ -332,6 +338,17 @@ class Store {
     blockQuic = _p.getBool('blockQuic') ?? true;
     mtu = _p.getInt('mtu') ?? 1500;
 
+    final legacy = _p.getString('subinfo');
+    if (legacy != null && subs.isNotEmpty && infoFor(subs.first) == null) {
+      try {
+        final j = jsonDecode(legacy) as Map;
+        final m = Map<String, dynamic>.from(subMeta[subs.first] ?? {});
+        m['u'] = j['u'];
+        m['tot'] = j['t'];
+        m['e'] = j['e'];
+        subMeta[subs.first] = m;
+      } catch (_) {}
+    }
     lastKey = _p.getString('lastKey') ?? '';
     if (lastKey.isNotEmpty) {
       final li = nodes.indexWhere((n) => n.key == lastKey);
@@ -374,6 +391,9 @@ class Store {
     await _p.setBool('announceOn', announceOn);
     await _p.setBool('showSystemApps', showSystemApps);
     await _p.setBool('showNet', showNet);
+    await _p.setBool('smartKeep', smartKeep);
+    await _p.setInt('keepTop', keepTop);
+    await _p.setStringList('collapsed', collapsed.toList());
     await _p.setBool('speedWidget', speedWidget);
     await _p.setBool('speedBits', speedBits);
     await _p.setBool('tipHidden', tipHidden);
