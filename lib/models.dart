@@ -28,7 +28,7 @@ class TcpStat {
 }
 
 class Node {
-  static String pingMode = 'tcp'; // tcp | real
+  static String pingMode = 'real'; // tcp | real
 
   final Map<String, dynamic> ob;
   final String src; // 'sub' or 'manual'
@@ -303,7 +303,11 @@ class Store {
     connectOnOpen = _p.getBool('connectOnOpen') ?? false;
     clipboardWatch = _p.getBool('clipboardWatch') ?? true;
     httpsOnly = _p.getBool('httpsOnly') ?? true;
-    pingMode = _p.getString('pingMode') ?? 'tcp';
+    pingMode = _p.getString('pingMode') ?? 'real';
+    if (!(_p.getBool('pingMig3') ?? false)) {
+      pingMode = 'real';
+      _p.setBool('pingMig3', true);
+    }
     testUrl = _p.getString('testUrl') ?? 'http://connectivitycheck.gstatic.com/generate_204';
     dns = _p.getString('dns') ?? 'google';
     ipv6 = _p.getBool('ipv6') ?? false;

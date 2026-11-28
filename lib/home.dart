@@ -500,6 +500,15 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     } catch (_) {}
     // the other fast servers stay ready next to the best one (smart mode)
     scored.sort((a, b) => a.$1.compareTo(b.$1));
+    if (scored.isNotEmpty && store.lastKey.isNotEmpty) {
+      final lastIdx = nodes.indexWhere((n) => n.key == store.lastKey);
+      double? lastScore;
+      for (final e in scored) {
+        if (e.$2 == lastIdx) lastScore = e.$1;
+      }
+      final top = scored.first.$1;
+      if (lastScore != null && lastScore <= top + math.max(20.0, top * 0.3)) best = lastIdx;
+    }
     _smartPool = [
       for (final e in scored)
         if (e.$2 != best) nodes[e.$2].ob
@@ -644,9 +653,11 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
     });
     try {
       final selKey = store.nodes[store.selected].key;
-      await tcpPingAll(store.nodes, samples: 3, onResult: () {
-        if (mounted) setState(() {});
-      });
+      if (store.pingMode != 'real' || isDesktop) {
+        await tcpPingAll(store.nodes, samples: 3, onResult: () {
+          if (mounted) setState(() {});
+        });
+      }
       if (store.pingMode != 'real' && !isDesktop && !(running || starting)) {
         final dead = store.nodes.where((n) => !n.isInfo && n.tcp == null).toList();
         if (dead.isNotEmpty) {
@@ -662,7 +673,7 @@ class _HomeState extends State<Home> with WidgetsBindingObserver {
           }
         }
       }
-      if (store.pingMode == 'real') {
+      if (store.pingMode == 'real' && !isDesktop) {
         if (running || starting) {
           _toast(tr('disconnect_first'));
         } else {

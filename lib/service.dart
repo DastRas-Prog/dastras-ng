@@ -367,39 +367,33 @@ List<Map<String, dynamic>> _pingOutbounds(Map<String, dynamic> ob) {
   return [m, if (ex is List) ...ex.map((e) => Map<String, dynamic>.from(e as Map))];
 }
 
-/// Real (URL) delay through the proxy. Max 5 configs per batch.
-/// Only works while the VPN is disconnected.
-Future<List<int?>> pingBatch(List<Map<String, dynamic>> obs, String url) async {
-  final out = <int?>[];
-  for (var i = 0; i < obs.length; i += 5) {
-    final chunk = obs.sublist(i, math.min(i + 5, obs.length));
-    final r = await Core.invoke('pingBatch', {
-      'configs': [
-        for (final ob in chunk)
-          {
-            'xrayJson': jsonEncode({'outbounds': _pingOutbounds(ob)})
-          }
-      ],
-      'timeout': 5,
-      'url': url,
-    });
-    List items = const [];
-    final d = r['data'];
-    if (d is List) {
-      items = d;
-    } else if (d is Map) {
-      items = (d['results'] ?? d['items'] ?? d['delays'] ?? d['configs'] ?? const []) as List;
+/// Real delay = one HTTP round trip through the server (like Hiddify), so every protocol is compared fairly.
+/// Four servers per round; a server that does not answer on one test URL gets the next URL
+/// (one URL can be blocked on some networks). [onResult] fires after every round.
+Future<void> pingReal(List<Node> nodes, String url, {void Function()? onResult}) async {
+  final urls = <String>{url, 'http://cp.cloudflare.com/generate_204', 'https://www.gstatic.com/generate_204'}.toList();
+  for (var i = 0; i < nodes.length; i += 4) {
+    final chunk = nodes.sublist(i, math.min(i + 4, nodes.length));
+    final best = List<int?>.filled(chunk.length, null);
+    for (final u in urls) {
+      final todo = [
+        for (var k = 0; k < chunk.length; k++)
+          if (best[k] == null) k
+      ];
+      if (todo.isEmpty) break;
+      try {
+        final res = await pingBatch(todo.map((k) => chunk[k].ob).toList(), u);
+        for (var j = 0; j < todo.length && j < res.length; j++) {
+          final v = res[j];
+          best[todo[j]] = (v == null || v <= 0 || v >= 99999) ? null : v;
+        }
+      } catch (_) {}
     }
     for (var k = 0; k < chunk.length; k++) {
-      int? v;
-      if (k < items.length && items[k] is Map) {
-        final dl = (items[k] as Map)['delay'];
-        if (dl is num && dl > 0 && dl < 10000) v = dl.toInt();
-      }
-      out.add(v);
+      chunk[k].real = best[k];
     }
+    onResult?.call();
   }
-  return out;
 }
 
 /// TCP connect time to the server itself (DNS excluded). Works even while connected,

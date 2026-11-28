@@ -23,6 +23,8 @@
 
 - کارت سرورها فشرده‌تر شد (فونت و فاصله‌ها کوچک‌تر) تا سرورهای بیشتری در صفحه جا شود؛ پینگ بدون کادر نمایش داده می‌شود
 
+- پینگ مثل Hiddify: زمان واقعی یک درخواست HTTP از داخل سرور (نه فقط اتصال TCP)، با چند آدرس تست؛ در انتخاب خودکار، آخرین سرور متصل‌شده تا وقتی دیگری واضح سریع‌تر نباشد حفظ می‌شود
+
 **English**
 - Always the newest Xray core (shown in Settings and on the home screen)
 - Windows (installer + portable) and macOS (dmg) versions
@@ -41,4 +43,5 @@
 - Subscription sections can be folded; same-named subscriptions are told apart
 - Fixed the usage card missing on some phones; account-info rows no longer show "n/a"
 - Server cards are more compact so more servers fit on the screen; the ping is shown without a pill
+- Ping like Hiddify: the real time of an HTTP request through the server (not just a TCP connect), with several test URLs; in automatic mode the last connected server is kept unless another one is clearly faster
 
