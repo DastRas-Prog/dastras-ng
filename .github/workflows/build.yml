@@ -161,11 +161,16 @@ jobs:
           else
             echo "No release key secrets found - using the default debug signing"
           fi
-          flutter pub get
-          flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
+          retry() { for i in 1 2 3 4; do "$@" && return 0; echo "Network problem - retry $i in $((i*40))s"; sleep $((i*40)); done; return 1; }
+          # Maven Central sometimes answers 429 (too many requests) on shared runners: use Google's mirror first
+          for f in android/settings.gradle.kts android/build.gradle.kts android/settings.gradle android/build.gradle; do
+            if [ -f "$f" ]; then sed -i 's#^\(\s*\)mavenCentral()#\1maven { url = uri("https://maven-central.storage-download.googleapis.com/maven2/") }\n\1mavenCentral()#' "$f"; fi
+          done
+          retry flutter pub get
+          retry flutter build apk --release --split-per-abi --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
           mkdir -p ../dist
           cp build/app/outputs/flutter-apk/*-release.apk ../dist/
-          flutter build apk --release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
+          retry flutter build apk --release --obfuscate --split-debug-info=build/symbols --dart-define=BUILD_NUMBER=${{ github.run_number }}
           cp build/app/outputs/flutter-apk/app-release.apk ../dist/app-universal-release.apk
 
       - uses: actions/upload-artifact@v4
